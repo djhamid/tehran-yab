@@ -1,0 +1,4 @@
+:root{--bg:#0f172a;--fg:#f8fafc;--surface:#1e293b;--surface-light:#334155}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+.maplibregl-popup-content{background:var(--surface)!important;color:var(--fg)!important;border:1px solid var(--surface-light)!important;border-radius:12px!important;padding:16px!important}
