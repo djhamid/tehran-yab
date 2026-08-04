@@ -6344,5 +6344,379 @@
       "Shahrak-e Shariaty"
     ],
     "id": "zamzam"
+  },
+  "brt_شریعتی_7": {
+    "name": "شریعتی",
+    "translations": {
+      "fa": "شریعتی"
+    },
+    "lines": [
+      "brt_خط ۱ بی‌آر‌تی"
+    ],
+    "longitude": "51.4201",
+    "latitude": "35.7634",
+    "colors": [
+      "#E53935"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_شریعتی_7"
+  },
+  "brt_میدان_ولیعصر_8": {
+    "name": "میدان ولیعصر",
+    "translations": {
+      "fa": "میدان ولیعصر"
+    },
+    "lines": [
+      "brt_خط ۱ بی‌آر‌تی"
+    ],
+    "longitude": "51.4101",
+    "latitude": "35.7146",
+    "colors": [
+      "#E53935"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_میدان_ولیعصر_8"
+  },
+  "brt_میدان_انقلاب_9": {
+    "name": "میدان انقلاب",
+    "translations": {
+      "fa": "میدان انقلاب"
+    },
+    "lines": [
+      "brt_خط ۱ بی‌آر‌تی"
+    ],
+    "longitude": "51.3867",
+    "latitude": "35.6986",
+    "colors": [
+      "#E53935"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_میدان_انقلاب_9"
+  },
+  "brt_پایانه_آزادی_10": {
+    "name": "پایانه آزادی",
+    "translations": {
+      "fa": "پایانه آزادی"
+    },
+    "lines": [
+      "brt_خط ۲ بی‌آر‌تی"
+    ],
+    "longitude": "51.2856",
+    "latitude": "35.6996",
+    "colors": [
+      "#1E88E5"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_آزادی_10"
+  },
+  "brt_صادقیه_11": {
+    "name": "صادقیه",
+    "translations": {
+      "fa": "صادقیه"
+    },
+    "lines": [
+      "brt_خط ۲ بی‌آر‌تی"
+    ],
+    "longitude": "51.3327",
+    "latitude": "35.702",
+    "colors": [
+      "#1E88E5"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_صادقیه_11"
+  },
+  "brt_میدان_امام_حسین_12": {
+    "name": "میدان امام حسین",
+    "translations": {
+      "fa": "میدان امام حسین"
+    },
+    "lines": [
+      "brt_خط ۲ بی‌آر‌تی"
+    ],
+    "longitude": "51.4118",
+    "latitude": "35.668",
+    "colors": [
+      "#1E88E5"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_میدان_امام_حسین_12"
+  },
+  "brt_پایانه_علم_و_صنعت_13": {
+    "name": "پایانه علم و صنعت",
+    "translations": {
+      "fa": "پایانه علم و صنعت"
+    },
+    "lines": [
+      "brt_خط ۲ بی‌آر‌تی"
+    ],
+    "longitude": "51.4786",
+    "latitude": "35.73",
+    "colors": [
+      "#1E88E5"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_علم_و_صنعت_13"
+  },
+  "brt_پایانه_خاوران_14": {
+    "name": "پایانه خاوران",
+    "translations": {
+      "fa": "پایانه خاوران"
+    },
+    "lines": [
+      "brt_خط ۳ بی‌آر‌تی"
+    ],
+    "longitude": "51.5582",
+    "latitude": "35.6409",
+    "colors": [
+      "#43A047"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_خاوران_14"
+  },
+  "brt_پایانه_شمال_ونک_15": {
+    "name": "پایانه شمال (ونک)",
+    "translations": {
+      "fa": "پایانه شمال (ونک)"
+    },
+    "lines": [
+      "brt_خط ۳ بی‌آر‌تی"
+    ],
+    "longitude": "51.3966",
+    "latitude": "35.7459",
+    "colors": [
+      "#43A047"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_شمال_ونک_15"
+  },
+  "brt_پارک_وی_16": {
+    "name": "پارک وی",
+    "translations": {
+      "fa": "پارک وی"
+    },
+    "lines": [
+      "brt_خط ۴ بی‌آر‌تی"
+    ],
+    "longitude": "51.4132",
+    "latitude": "35.7939",
+    "colors": [
+      "#FB8C00"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پارک_وی_16"
+  },
+  "brt_ولنجک_17": {
+    "name": "ولنجک",
+    "translations": {
+      "fa": "ولنجک"
+    },
+    "lines": [
+      "brt_خط ۴ بی‌آر‌تی"
+    ],
+    "longitude": "51.4091",
+    "latitude": "35.7921",
+    "colors": [
+      "#FB8C00"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_ولنجک_17"
+  },
+  "brt_صدر_18": {
+    "name": "صدر",
+    "translations": {
+      "fa": "صدر"
+    },
+    "lines": [
+      "brt_خط ۴ بی‌آر‌تی"
+    ],
+    "longitude": "51.4246",
+    "latitude": "35.767",
+    "colors": [
+      "#FB8C00"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_صدر_18"
+  },
+  "brt_ونک_19": {
+    "name": "ونک",
+    "translations": {
+      "fa": "ونک"
+    },
+    "lines": [
+      "brt_خط ۴ بی‌آر‌تی"
+    ],
+    "longitude": "51.3966",
+    "latitude": "35.7459",
+    "colors": [
+      "#FB8C00"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_ونک_19"
+  },
+  "brt_مینی_سیتی_20": {
+    "name": "مینی سیتی",
+    "translations": {
+      "fa": "مینی سیتی"
+    },
+    "lines": [
+      "brt_خط ۴ بی‌آر‌تی"
+    ],
+    "longitude": "51.376",
+    "latitude": "35.739",
+    "colors": [
+      "#FB8C00"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_مینی_سیتی_20"
+  },
+  "brt_پایانه_کرمانشاه_21": {
+    "name": "پایانه کرمانشاه",
+    "translations": {
+      "fa": "پایانه کرمانشاه"
+    },
+    "lines": [
+      "brt_خط ۵ بی‌آر‌تی"
+    ],
+    "longitude": "51.3054",
+    "latitude": "35.7028",
+    "colors": [
+      "#8E24AA"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_کرمانشاه_21"
+  },
+  "brt_میدان_فاطمی_22": {
+    "name": "میدان فاطمی",
+    "translations": {
+      "fa": "میدان فاطمی"
+    },
+    "lines": [
+      "brt_خط ۵ بی‌آر‌تی"
+    ],
+    "longitude": "51.386",
+    "latitude": "35.7134",
+    "colors": [
+      "#8E24AA"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_میدان_فاطمی_22"
+  },
+  "brt_حرم_مطهر_شهر_ری_23": {
+    "name": "حرم مطهر (شهر ری)",
+    "translations": {
+      "fa": "حرم مطهر (شهر ری)"
+    },
+    "lines": [
+      "brt_خط ۶ بی‌آر‌تی"
+    ],
+    "longitude": "51.4233",
+    "latitude": "35.557",
+    "colors": [
+      "#00ACC1"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_حرم_مطهر_شهر_ری_23"
+  },
+  "brt_دولت_آباد_24": {
+    "name": "دولت آباد",
+    "translations": {
+      "fa": "دولت آباد"
+    },
+    "lines": [
+      "brt_خط ۶ بی‌آر‌تی"
+    ],
+    "longitude": "51.4629",
+    "latitude": "35.6183",
+    "colors": [
+      "#00ACC1"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_دولت_آباد_24"
+  },
+  "brt_پایانه_جنوب_25": {
+    "name": "پایانه جنوب",
+    "translations": {
+      "fa": "پایانه جنوب"
+    },
+    "lines": [
+      "brt_خط ۷ بی‌آر‌تی"
+    ],
+    "longitude": "51.3816",
+    "latitude": "35.6481",
+    "colors": [
+      "#6D4C41"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_جنوب_25"
+  },
+  "brt_پایانه_غرب_26": {
+    "name": "پایانه غرب",
+    "translations": {
+      "fa": "پایانه غرب"
+    },
+    "lines": [
+      "brt_خط ۷ بی‌آر‌تی"
+    ],
+    "longitude": "51.2928",
+    "latitude": "35.7087",
+    "colors": [
+      "#6D4C41"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_غرب_26"
+  },
+  "brt_پایانه_لاله_27": {
+    "name": "پایانه لاله",
+    "translations": {
+      "fa": "پایانه لاله"
+    },
+    "lines": [
+      "brt_خط ۸ بی‌آر‌تی"
+    ],
+    "longitude": "51.4203",
+    "latitude": "35.7007",
+    "colors": [
+      "#C62828"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_لاله_27"
+  },
+  "brt_پایانه_شرق_28": {
+    "name": "پایانه شرق",
+    "translations": {
+      "fa": "پایانه شرق"
+    },
+    "lines": [
+      "brt_خط ۱۰ بی‌آر‌تی"
+    ],
+    "longitude": "51.5114",
+    "latitude": "35.6788",
+    "colors": [
+      "#1565C0"
+    ],
+    "disabled": false,
+    "relations": [],
+    "id": "brt_پایانه_شرق_28"
   }
 }
