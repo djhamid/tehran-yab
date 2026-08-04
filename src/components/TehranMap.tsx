@@ -1,320 +1,237 @@
 'use client';
 import {useEffect,useRef,useState,useCallback} from 'react';
-import transit from '@/data/tehran-transit.json';
-import {
-  Point,ICON,LABEL,CATEGORIES,
-  genId,getPoints,savePoint,removePoint,POI_DATABASE
-} from '@/lib/storage';
+import * as maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import {Point,ICON,LABEL,CATEGORIES,genId,getPoints,savePoint,removePoint,POI_DATABASE} from '@/lib/storage';
+import {getStations,getStationById} from '@/services/metro';
+import {buildGraph} from '@/services/graph';
+import {findShortestPath} from '@/services/dijkstra';
 
-/* ===== CONSTANTS ===== */
-const GM_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || 'YOUR_GOOGLE_MAPS_API_KEY'; // Replace with your key
-const GM_LIBRARIES: 'places'[] = ['places'];
-const TEHRAN_CENTER = {lat:35.6892,lng:51.3890};
-const TEHRAN_BOUNDS = {north:35.85,south:35.45,east:51.60,west:51.10};
+const normalize=(s:string)=>s.replace(/[آا]/g,'ا').replace(/ی/g,'ي').replace(/ک/g,'ك').toLowerCase();
 
-/* ===== UTILITIES ===== */
-const normalize = (s:string) => s.replace(/[آا]/g,'ا').replace(/ی/g,'ي').replace(/ک/g,'ك').toLowerCase();
-
-function searchAll(q:string):any[]{
-  const t=q.trim(); if(t.length<2) return [];
-  const qn=normalize(t); const rv:any[]=[];
-
-  // Transit stations
-  for(const line of [...transit.metro,...transit.brt])
-    for(const st of line.stations)
-      if(normalize(st.name).includes(qn))
-        rv.push({name:st.name,lat:st.lat,lng:st.lon,type:'metro',color:line.color,subtitle:line.full_name});
-
+function searchPoi(q:string){
+  const qn=normalize(q.trim());if(qn.length<2)return[];
+  const rv:any[]=[],seen=new Set<string>();
+  const add=(name:string,lat:number,lng:number,type:string,color:string,subtitle:string)=>{
+    const k=name+lat.toFixed(4);if(seen.has(k))return;seen.add(k);rv.push({name,lat,lng,type,color,subtitle});
+  };
+  // Metro stations (from sharyaan data - 150 stations)
+  for(const st of getStations()){
+    if(!st.disabled && (normalize(st.nameFa).includes(qn)||normalize(st.name).includes(qn)))
+      add(st.nameFa,st.latitude,st.longitude,'metro','#5e6ad2',`خط ${st.lines.join(',')}`);
+  }
   // POI
   for(const p of POI_DATABASE)
-    if(normalize(p.name).includes(qn) || normalize(LABEL[p.category]||'').includes(qn))
-      rv.push({name:p.name,lat:p.lat,lng:p.lng,type:'poi',color:'#7170ff',subtitle:LABEL[p.category]});
-
+    if(normalize(p.name).includes(qn)||normalize(LABEL[p.category]||'').includes(qn))
+      add(p.name,p.lat,p.lng,'poi','#7170ff',LABEL[p.category]);
   // User points
   for(const p of getPoints())
     if(normalize(p.name).includes(qn))
-      rv.push({name:p.name,lat:p.lat,lng:p.lng,type:'user',color:'#f59e0b',subtitle:LABEL[p.category]});
-
-  // Dedupe
-  const seen=new Set<string>();
-  return rv.filter(r=>{const k=r.name+r.lat.toFixed(4);if(seen.has(k))return false;seen.add(k);return true}).slice(0,12);
+      add(p.name,p.lat,p.lng,'user','#f59e0b',LABEL[p.category]);
+  return rv.slice(0,12);
 }
 
-/* ===== STYLES (Linear-inspired) ===== */
-const S = {
-  full:{width:'100%',height:'100dvh',position:'relative',direction:'ltr',overflow:'hidden'} as any,
-  map:{width:'100%',height:'100%'} as any,
-  // Top bar
-  topBar:{position:'absolute',top:12,left:'50%',transform:'translateX(-50%)',zIndex:100,width:'min(520px,calc(100vw-24px))'} as any,
-  topInner:{display:'flex',gap:6,background:'rgba(15,16,17,.92)',backdropFilter:'blur(20px) saturate(1.4)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:'5px 6px',alignItems:'center',boxShadow:'0 8px 32px rgba(0,0,0,.5)'} as any,
-  logo:{fontWeight:700,fontSize:14,whiteSpace:'nowrap',color:'#f7f8f8',padding:'0 4px'} as any,
-  searchWrap:{flex:1,position:'relative'} as any,
-  input:{width:'100%',padding:'7px 12px',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:10,color:'#f7f8f8',fontSize:13,outline:'none',transition:'all .2s'} as any,
-  drop:{position:'absolute',top:'100%',left:0,right:0,background:'#0f1011',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,marginTop:6,padding:4,maxHeight:340,overflowY:'auto',zIndex:110,boxShadow:'0 12px 48px rgba(0,0,0,.5)'} as any,
-  dropItem:{padding:'8px 10px',cursor:'pointer',borderRadius:8,display:'flex',alignItems:'center',gap:10,transition:'background .15s'} as any,
-  dot:{width:10,height:10,borderRadius:'50%',display:'inline-block',flexShrink:0} as any,
-  // Bottom bar (mobile-safe)
-  bottomBar:{position:'absolute',bottom:0,left:0,right:0,zIndex:100,display:'flex',justifyContent:'center',padding:'0 12px 12px',pointerEvents:'none'} as any,
-  bottomInner:{display:'flex',gap:5,background:'rgba(15,16,17,.92)',backdropFilter:'blur(20px) saturate(1.4)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:'5px 8px',boxShadow:'0 8px 32px rgba(0,0,0,.5)',pointerEvents:'auto',flexWrap:'wrap',justifyContent:'center'} as any,
-  btn:{padding:'7px 12px',borderRadius:10,fontSize:11.5,fontWeight:500,cursor:'pointer',border:'1px solid rgba(255,255,255,0.06)',background:'rgba(255,255,255,0.03)',color:'#f7f8f8',transition:'all .15s',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4,fontFamily:'Vazirmatn,system-ui'} as any,
-  btnAct:{padding:'7px 12px',borderRadius:10,fontSize:11.5,fontWeight:600,cursor:'pointer',border:'1px solid var(--accent)',background:'rgba(94,106,210,.15)',color:'#7170ff',transition:'all .15s',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4,fontFamily:'Vazirmatn,system-ui'} as any,
-  // Panel
-  panel:{position:'absolute',top:72,right:8,width:320,maxHeight:'calc(100dvh-100px)',background:'rgba(15,16,17,.96)',backdropFilter:'blur(24px)saturate(1.6)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,padding:16,overflowY:'auto',zIndex:100,boxShadow:'0 8px 32px rgba(0,0,0,.4)',display:'flex',flexDirection:'column',gap:4} as any,
-  panelItem:{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:10,cursor:'pointer',transition:'background .15s',border:'1px solid transparent'} as any,
-};
-
-/* ===== COMPONENT ===== */
 export default function TehranMap(){
-  const mapRef=useRef<google.maps.Map|null>(null);
-  const searchRef=useRef<HTMLInputElement>(null);
-  const markersRef=useRef<google.maps.Marker[]>([]);
-  const polylineRef=useRef<google.maps.Polyline|null>(null);
-  const routeMarkersRef=useRef<google.maps.Marker[]>([]);
-  const transitPolylinesRef=useRef<google.maps.Polyline[]>([]);
-  const transitDotsRef=useRef<google.maps.Marker[]>([]);
-  const poiMarkersRef=useRef<google.maps.Marker[]>([]);
+  const mc=useRef<HTMLDivElement>(null);
+  const mapRef=useRef<maplibregl.Map|null>(null);
+  const markers=useRef<maplibregl.Marker[]>([]);
+  const poiRef=useRef<maplibregl.Marker[]>([]);
+  const metroDots=useRef<maplibregl.Marker[]>([]);
+  const routeMs=useRef<maplibregl.Marker[]>([]);
+  const routeLineId=useRef<string>('');
 
-  const [loaded,setLoaded]=useState(false);
   const [pts,setPts]=useState<Point[]>([]);
-  const [sq,setSq]=useState('');
-  const [sres,setSres]=useState<any[]>([]);
+  const [sq,setSq]=useState('');const [sres,setSres]=useState<any[]>([]);
   const [panel,setPanel]=useState<string|null>(null);
   const [sel,setSel]=useState<any>(null);
   const [rmode,setRmode]=useState(false);
   const [rf,setRf]=useState<any>(null);
   const [rr,setRr]=useState<any>(null);
-  const [transitVis,setTransitVis]=useState<'both'|'metro'|'brt'|'off'>('both');
+  const [showMetro,setShowMetro]=useState(true);
   const [showPoi,setShowPoi]=useState(true);
+  const load=useCallback(()=>setPts(getPoints()),[]);
 
-  const flyTo=useCallback((lat:number,lng:number,z:number=16)=>{
-    const map=mapRef.current;if(!map)return;
-    map.panTo({lat,lng});
-    if(map.getZoom()!==z)map.setZoom(z);
-  },[]);
-
-  const loadPts=useCallback(()=>setPts(getPoints()),[]);
-
-  // ---- Load Google Maps API ----
-  useEffect(()=>{
-    if(typeof window==='undefined'||window.google?.maps)return;
-    const s=document.createElement('script');
-    s.src=`https://maps.googleapis.com/maps/api/js?key=${GM_KEY}&libraries=places&language=fa&region=IR`;
-    s.async=true;s.defer=true;
-    s.onload=()=>setLoaded(true);
-    document.head.appendChild(s);
-    return ()=>{s.remove();};
-  },[]);
-
-  // ---- Init Map ----
-  useEffect(()=>{
-    if(!loaded||mapRef.current)return;
-    const map=new google.maps.Map(document.getElementById('map-canvas')!,{
-      center:TEHRAN_CENTER,zoom:11,minZoom:10,maxZoom:17,
-      mapTypeId:'roadmap',
-      mapTypeControl:false,
-      fullscreenControl:false,
-      streetViewControl:false,
-      zoomControl:true,
-      zoomControlOptions:{position:google.maps.ControlPosition.LEFT_TOP},
-      styles:[
-        {featureType:'poi',elementType:'labels',stylers:[{visibility:'off'}]},
-        {featureType:'transit',elementType:'labels',stylers:[{visibility:'off'}]},
-        {featureType:'poi.business',stylers:[{visibility:'off'}]},
-        {featureType:'road',elementType:'labels',stylers:[{visibility:'on'}]},
-        {featureType:'water',stylers:[{color:'#0f172a'}]},
-        {featureType:'landscape',stylers:[{color:'#1e293b'}]},
-        {featureType:'road',stylers:[{color:'#334155'}]},
-        {featureType:'road.highway',stylers:[{color:'#475569'}]},
-        {featureType:'administrative',elementType:'labels.text.fill',stylers:[{color:'#94a3b8'}]},
-        {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#cbd5e1'}]},
-      ],
-      restriction:{latLngBounds:TEHRAN_BOUNDS,strictBounds:false},
-    });
-    mapRef.current=map;
-    setLoaded(true);
-    loadPts();
-
-    // Listen for search box
-    const input=searchRef.current;
-    if(input&&window.google?.maps?.places){
-      const autocomplete=new google.maps.places.Autocomplete(input,{
-        types:['establishment','geocode'],
-        componentRestrictions:{country:'IR'},
-        fields:['name','geometry','formatted_address'],
-      });
-      autocomplete.bindTo('bounds',map);
-      autocomplete.addListener('place_changed',()=>{
-        const place=autocomplete.getPlace();
-        if(place.geometry?.location){
-          map.setCenter(place.geometry.location);
-          map.setZoom(16);
-        }
-      });
-    }
-
-    return ()=>{mapRef.current=null;};
-  },[loaded]);
-
-  // ---- User & POI Markers ----
-  useEffect(()=>{
-    const map=mapRef.current;if(!map)return;
-    markersRef.current.forEach(m=>m.setMap(null));markersRef.current=[];
-    poiMarkersRef.current.forEach(m=>m.setMap(null));poiMarkersRef.current=[];
-
-    // POI markers
-    if(showPoi) POI_DATABASE.forEach(p=>{
-      const m=new google.maps.Marker({
-        position:{lat:p.lat,lng:p.lng},map,
-        icon:{path:google.maps.SymbolPath.CIRCLE,scale:5,fillColor:'#7170ff',fillOpacity:0.7,strokeColor:'#fff',strokeWeight:1.5},
-        title:p.name,
-      });
-      m.addListener('click',()=>{
-        setSel({name:p.name,lat:p.lat,lng:p.lng,type:'poi',subtitle:LABEL[p.category]});
-        setPanel(null);
-      });
-      poiMarkersRef.current.push(m);
-    });
-
-    // User markers
-    pts.forEach(p=>{
-      const colors:any={metro:'#E31837',brt:'#1E88E5',university:'#8b5cf6',school:'#f59e0b',home:'#22c55e',cafe:'#d97706',restaurant:'#ef4444',shop:'#ec4899',hospital:'#e11d48',park:'#16a34a',gym:'#ea580c',library:'#6366f1',other:'#64748b'};
-      const m=new google.maps.Marker({
-        position:{lat:p.lat,lng:p.lng},map,
-        label:{text:ICON[p.category]||'📍',fontSize:'16px'},
-        icon:{path:google.maps.SymbolPath.CIRCLE,scale:14,fillColor:colors[p.category]||'#3b82f6',fillOpacity:1,strokeColor:'#fff',strokeWeight:2.5},
-        title:p.name,
-        optimized:false,
-      });
-      const info=new google.maps.InfoWindow({
-        content:`<div style="font-family:Vazirmatn,system-ui;direction:rtl;padding:4px"><b>${p.name}</b><br/><span style="color:#94a3b8;font-size:13px">${ICON[p.category]} ${LABEL[p.category]||'سایر'}</span></div>`,
-        pixelOffset:new google.maps.Size(0,-4),
-      });
-      m.addListener('click',()=>info.open(map,m));
-      markersRef.current.push(m);
-    });
-  },[pts,showPoi]);
-
-  // ---- Transit Layers ----
-  useEffect(()=>{
-    const map=mapRef.current;if(!map)return;
-    transitPolylinesRef.current.forEach(p=>p.setMap(null));transitPolylinesRef.current=[];
-    transitDotsRef.current.forEach(m=>m.setMap(null));transitDotsRef.current=[];
-
-    if(transitVis==='off')return;
-    const isM=transitVis==='both'||transitVis==='metro';
-    const isB=transitVis==='both'||transitVis==='brt';
-
-    [...(isM?transit.metro:[]),...(isB?transit.brt:[])].forEach(line=>{
-      const pts=line.stations.map((s:any)=>({lat:s.lat,lng:s.lon}));
-      const poly=new google.maps.Polyline({
-        path:pts,map,strokeColor:line.color,strokeWeight:3,strokeOpacity:0.8,
-        geodesic:true,
-      });
-      transitPolylinesRef.current.push(poly);
-      line.stations.forEach((st:any)=>{
-        const dot=new google.maps.Marker({
-          position:{lat:st.lat,lng:st.lon},map,
-          icon:{path:google.maps.SymbolPath.CIRCLE,scale:5,fillColor:line.color,fillOpacity:1,strokeColor:'#fff',strokeWeight:1.5},
-          title:st.name,
-        });
-        dot.addListener('click',()=>{
-          setSel({name:st.name,lat:st.lat,lng:st.lon,type:'metro',color:line.color,subtitle:line.full_name});
-          setPanel(null);
-        });
-        transitDotsRef.current.push(dot);
-      });
-    });
-  },[transitVis]);
-
-  // ---- Routing ----
-  const getRoute=async (f:any,t:any)=>{
-    try{
-      const r=await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${f.lng},${f.lat};${t.lng},${t.lat}?overview=full&geometries=geojson&alternatives=true`,
-        {signal:AbortSignal.timeout(10000)}
-      );
-      const d=await r.json();
-      if(d.code==='Ok'&&d.routes?.length>0) return d.routes[0];
-    }catch{}
-    return null;
-  };
-
-  const startRoute=(p:any)=>{
-    clearRoute();
-    const map=mapRef.current;if(!map)return;
-    const m=new google.maps.Marker({
-      position:{lat:p.lat,lng:p.lng},map,
-      icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:'#22c55e',fillOpacity:1,strokeColor:'#fff',strokeWeight:2.5},
-      title:'مبدأ',
-    });
-    routeMarkersRef.current.push(m);
-    setRf(p);setRmode(true);setSel(null);
+  const flyTo=(lat:number,lng:number,z=16)=>{
+    mapRef.current?.flyTo({center:[lng,lat],zoom:z,duration:500});
   };
 
   const clearRoute=()=>{
-    routeMarkersRef.current.forEach(m=>m.setMap(null));routeMarkersRef.current=[];
-    polylineRef.current?.setMap(null);polylineRef.current=null;
+    routeMs.current.forEach(m=>m.remove());routeMs.current=[];
+    if(routeLineId.current){try{mapRef.current?.removeLayer(routeLineId.current);mapRef.current?.removeSource(routeLineId.current);}catch{}routeLineId.current='';}
     setRr(null);setRf(null);setRmode(false);
   };
 
-  // ---- Map Click Handler ----
+  // ---- CENTERED COLOR MAP ----
+  const lineColors:{[k:number]:string}={1:'#E31837',2:'#005BAA',3:'#008C3A',4:'#FFC20E',5:'#8B5CF6',6:'#FF6B35',7:'#F5A623'};
+
+  // ---- MAP INIT ----
   useEffect(()=>{
-    const map=mapRef.current;if(!map||!rmode)return;
-    const handler=(e:google.maps.MapMouseEvent)=>{
-      if(!e.latLng||!rmode)return;
-      const p={name:'موقعیت کلیک',lat:e.latLng.lat(),lng:e.latLng.lng(),type:'user',color:'#ef4444'};
+    if(!mc.current||mapRef.current)return;
+    const map=new maplibregl.Map({
+      container:mc.current,
+      style:{
+        version:8,name:'Tehran',
+        sources:{r:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'],tileSize:256,attribution:'<a href="https://carto.com/">CARTO</a>'}},
+        layers:[{id:'base',type:'raster',source:'r'}]
+      },
+      center:[51.389,35.6892],zoom:11
+    });
+    map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-left');
+    map.on('load',()=>{mapRef.current=map;load();setTimeout(()=>map.resize(),100);});
+    return ()=>{map.remove();mapRef.current=null;};
+  },[]);
+
+  // ---- METRO STATIONS (150 dots from sharyaan) ----
+  useEffect(()=>{
+    const map=mapRef.current;if(!map)return;
+    metroDots.current.forEach(m=>m.remove());metroDots.current=[];
+    if(!showMetro)return;
+    for(const st of getStations()){
+      if(st.disabled)continue;
+      const color=st.colors[0]||'#71707a';
+      const el=document.createElement('div');
+      el.style.cssText=`width:20px;height:20px;background:${color};border:2px solid #fff;border-radius:50%;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center`;
+      el.title=st.nameFa;
+      const popup=new maplibregl.Popup({offset:15,closeButton:true,closeOnClick:false})
+        .setHTML(`<div style="font-family:Vazirmatn,system-ui;direction:rtl"><b>${st.nameFa}</b><br/><small>خط ${st.lines.join(' - ')}</small></div>`);
+      const m=new maplibregl.Marker({element:el}).setLngLat([st.longitude,st.latitude]).setPopup(popup).addTo(map);
+      el.onclick=()=>{
+        setSel({name:st.nameFa,lat:st.latitude,lng:st.longitude,type:'metro',id:st.id,lines:st.lines,colors:st.colors});
+        setPanel(null);
+      };
+      metroDots.current.push(m);
+    }
+  },[showMetro]);
+
+  // ---- POI + USER MARKERS ----
+  useEffect(()=>{
+    const map=mapRef.current;if(!map)return;
+    markers.current.forEach(m=>m.remove());markers.current=[];
+    poiRef.current.forEach(m=>m.remove());poiRef.current=[];
+
+    if(showPoi)POI_DATABASE.forEach(p=>{
+      const el=document.createElement('div');
+      el.style.cssText='width:22px;height:22px;background:rgba(113,112,255,.2);border:2px solid rgba(113,112,255,.6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer';
+      el.textContent=ICON[p.category]||'📍';
+      const pop=new maplibregl.Popup({offset:15}).setHTML(`<div style="font-family:Vazirmatn,system-ui;direction:rtl"><b>${p.name}</b><br/><small>${ICON[p.category]} ${LABEL[p.category]}</small></div>`);
+      poiRef.current.push(new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).setPopup(pop).addTo(map));
+    });
+
+    pts.forEach(p=>{
+      const colors:any={metro:'#E31837',brt:'#1E88E5',university:'#8b5cf6',home:'#22c55e',cafe:'#d97706',shop:'#ec4899',hospital:'#e11d48',park:'#16a34a',gym:'#ea580c',library:'#6366f1',other:'#64748b'};
+      const el=document.createElement('div');
+      el.style.cssText=`width:30px;height:30px;background:${colors[p.category]||'#3b82f6'};border:3px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)`;
+      el.textContent=ICON[p.category]||'📍';
+      const pop=new maplibregl.Popup({offset:20}).setHTML(`<div style="font-family:Vazirmatn,system-ui;direction:rtl"><b>${p.name}</b><br/><small>${ICON[p.category]} ${LABEL[p.category]}</small>${p.note?`<br/><span style="font-size:12px;color:#94a3b8">${p.note}</span>`:''}</div>`);
+      markers.current.push(new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).setPopup(pop).addTo(map));
+    });
+  },[pts,showPoi]);
+
+  // ---- ROUTE CLICK HANDLER ----
+  useEffect(()=>{
+    const map=mapRef.current;if(!map)return;
+    const h=async(e:any)=>{
+      if(!rmode)return;
+      const p={lat:e.lngLat.lat,lng:e.lngLat.lng};
       if(!rf){
-        startRoute(p);
+        setRf(p);
+        const el=document.createElement('div');
+        el.style.cssText='width:18px;height:18px;background:#22c55e;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.4)';
+        routeMs.current.push(new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(map));
+      }else{
+        try{
+          const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${rf.lng},${rf.lat};${p.lng},${p.lat}?overview=full&geometries=geojson`,{signal:AbortSignal.timeout(10000)});
+          const d=await r.json();
+          if(d.code==='Ok'&&d.routes?.[0]){
+            setRr({d:d.routes[0].distance/1000,t:d.routes[0].duration/60});
+            const sid='r_'+Date.now();
+            map.addSource(sid,{type:'geojson',data:d.routes[0].geometry});
+            map.addLayer({id:sid,type:'line',source:sid,paint:{'line-color':'#7170ff','line-width':5,'line-opacity':0.9}});
+            map.addLayer({id:sid+'_g',type:'line',source:sid,paint:{'line-color':'#7170ff','line-width':12,'line-opacity':0.15}});
+            routeLineId.current=sid;
+            const b=new maplibregl.LngLatBounds();d.routes[0].geometry.coordinates.forEach((c:any)=>b.extend([c[0],c[1]]));map.fitBounds(b,{padding:80,maxZoom:15});
+          }
+        }catch(ex){}
+        setRmode(false);
       }
     };
-    const unsub=map.addListener('click',handler);
-    return ()=>{google.maps.event.removeListener(unsub);};
+    map.on('click',h);
+    return ()=>{map.off('click',h);};
   },[rmode,rf]);
 
-  // ---- Add point ----
+  // ---- METRO ROUTING (Dijkstra) ----
+  const findMetroRoute=(fromId:string,toId:string)=>{
+    const stations=getStations();
+    const graph=buildGraph(stations);
+    const result=findShortestPath(graph,fromId,toId);
+    if(!result){alert('مسیری بین این ایستگاه‌ها یافت نشد');return;}
+    const map=mapRef.current;if(!map)return;
+    clearRoute();
+    // Draw route on map
+    const coords=result.stations.map(s=>[s.longitude,s.latitude]);
+    if(coords.length<2)return;
+    const sid='mr_'+Date.now();
+    map.addSource(sid,{type:'geojson',data:{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:coords}}});
+    map.addLayer({id:sid,type:'line',source:sid,paint:{'line-color':'#8b5cf6','line-width':6,'line-opacity':0.85}});
+    routeLineId.current=sid;
+    const b=new maplibregl.LngLatBounds();coords.forEach((c:any)=>b.extend(c));map.fitBounds(b,{padding:80});
+    setRr({d:0,t:result.estimatedMinutes,stations:result.stations,stops:result.stops,transfers:result.transfers,lines:result.linesUsed,isMetro:true});
+    const el=document.createElement('div');el.style.cssText='width:14px;height:14px;background:#8b5cf6;border:2px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.4)';
+    routeMs.current.push(new maplibregl.Marker({element:el}).setLngLat([result.origin.longitude,result.origin.latitude]).addTo(map));
+    const el2=document.createElement('div');el2.style.cssText='width:14px;height:14px;background:#ef4444;border:2px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.4)';
+    routeMs.current.push(new maplibregl.Marker({element:el2}).setLngLat([result.destination.longitude,result.destination.latitude]).addTo(map));
+  };
+
+  const startRoute=(p:any)=>{
+    clearRoute();const map=mapRef.current;if(!map)return;
+    const el=document.createElement('div');
+    el.style.cssText='width:18px;height:18px;background:#22c55e;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.4)';
+    routeMs.current.push(new maplibregl.Marker({element:el}).setLngLat([p.lng,p.lat]).addTo(map));
+    setRf(p);setRmode(true);setSel(null);setPanel(null);
+  };
+
   const addP=(n:string,cat:Point['category'],note:string)=>{
     const c=mapRef.current?.getCenter();if(!c)return;
-    savePoint({id:genId(),name:n,lat:c.lat(),lng:c.lng(),category:cat,createdAt:new Date().toISOString(),note:note||undefined});
+    savePoint({id:genId(),name:n,lat:c.lat,lng:c.lng,category:cat,createdAt:new Date().toISOString(),note:note||undefined});
     setPts(getPoints());setPanel(null);
   };
 
-  // ---- Search ----
-  const handleSearch=(v:string)=>{setSq(v);setSres(searchAll(v));};
+  const hSearch=(v:string)=>{setSq(v);setSres(searchPoi(v));};
   const selectSearch=(r:any)=>{setSq(r.name);setSres([]);setSel(r);flyTo(r.lat,r.lng);};
 
-  // ---- Render ----
-  if(!loaded) return <div style={{width:'100%',height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#08090a',color:'#7170ff',flexDirection:'column',gap:12}}>
-    <div style={{fontSize:48}}>🗺️</div>
-    <div style={{fontSize:20,fontWeight:700}}>TehranYab</div>
-    <div style={{fontSize:13,color:'#8a8f98'}}>در حال بارگذاری نقشه...</div>
-  </div>;
+  const style={
+    full:{width:'100%',height:'100dvh',position:'relative',direction:'ltr',overflow:'hidden',background:'#08090a'} as any,
+    map:{width:'100%',height:'100%'} as any,
+    top:{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',zIndex:100,width:'min(520px,calc(100vw-20px))'} as any,
+    topI:{display:'flex',gap:6,background:'rgba(15,16,17,.94)',backdropFilter:'blur(20px)saturate(1.4)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:'5px 6px',alignItems:'center',boxShadow:'0 8px 32px rgba(0,0,0,.5)'} as any,
+    inp:{width:'100%',padding:'7px 12px',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:10,color:'#f7f8f8',fontSize:13,outline:'none',fontFamily:'Vazirmatn,system-ui'} as any,
+    drop:{position:'absolute',top:'100%',left:0,right:0,background:'#0f1011',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,marginTop:6,padding:4,maxHeight:340,overflowY:'auto',zIndex:110,boxShadow:'0 12px 48px rgba(0,0,0,.5)'} as any,
+    bot:{position:'absolute',bottom:10,left:0,right:0,zIndex:100,display:'flex',justifyContent:'center',padding:'0 10px',pointerEvents:'none'} as any,
+    botI:{display:'flex',gap:4,background:'rgba(15,16,17,.94)',backdropFilter:'blur(20px)saturate(1.4)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:'5px 8px',boxShadow:'0 8px 32px rgba(0,0,0,.5)',pointerEvents:'auto',flexWrap:'wrap',justifyContent:'center'} as any,
+    panel:{position:'absolute',top:68,right:8,width:320,maxHeight:'calc(100dvh-90px)',background:'rgba(15,16,17,.96)',backdropFilter:'blur(24px)saturate(1.6)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,padding:16,overflowY:'auto',zIndex:100,boxShadow:'0 8px 32px rgba(0,0,0,.4)'} as any,
+  };
+  const btn=(a=false)=>({padding:'7px 11px',borderRadius:10,fontSize:11.5,fontWeight:a?600:500,cursor:'pointer',border:a?'1px solid #5e6ad2':'1px solid rgba(255,255,255,0.06)',background:a?'rgba(94,106,210,.15)':'rgba(255,255,255,0.03)',color:a?'#7170ff':'#f7f8f8',transition:'all .15s',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:3,fontFamily:'Vazirmatn,system-ui'} as any);
 
-  return <div style={S.full}>
-    <div id="map-canvas" style={S.map}/>
+  return <div style={style.full}>
+    <div ref={mc} style={style.map}/>
 
-    {/* Top Bar */}
-    <div style={S.topBar}>
-      <div style={S.topInner}>
-        <span style={S.logo}><span style={{color:'#7170ff'}}>تهران</span>یاب</span>
-        <div style={S.searchWrap}>
-          <input ref={searchRef} value={sq} onChange={e=>handleSearch(e.target.value)}
-            placeholder='جستجوی مکان، دانشگاه، مترو...' dir="rtl" style={S.input}
+    {/* Top bar */}
+    <div style={style.top}>
+      <div style={style.topI}>
+        <span style={{fontWeight:700,fontSize:14,whiteSpace:'nowrap',color:'#f7f8f8',padding:'0 4px'}}>
+          <span style={{color:'#7170ff'}}>تهران</span>یاب</span>
+        <div style={{flex:1,position:'relative'}}>
+          <input value={sq} onChange={e=>hSearch(e.target.value)} placeholder='جستجوی ایستگاه مترو، مکان...' dir="rtl" style={style.inp}
             onFocus={e=>e.target.style.borderColor='rgba(113,112,255,.4)'}
-            onBlur={e=>{e.target.style.borderColor='rgba(255,255,255,0.06)';setTimeout(()=>setSres([]),300)}}/>
-          {sres.length>0&&<div style={S.drop}>
+            onBlur={e=>{e.target.style.borderColor='rgba(255,255,255,0.06)';setTimeout(()=>setSres([]),250)}}/>
+          {sres.length>0&&<div style={style.drop}>
             {sres.map((r,i)=>(
-              <div key={i} onClick={()=>selectSearch(r)} style={S.dropItem}
+              <div key={i} onClick={()=>selectSearch(r)} style={{padding:'8px 10px',cursor:'pointer',borderRadius:8,display:'flex',alignItems:'center',gap:10}}
                 onMouseEnter={e=>(e.target as HTMLElement).style.background='rgba(113,112,255,.1)'}
                 onMouseLeave={e=>(e.target as HTMLElement).style.background='transparent'}>
-                <span style={{...S.dot,background:r.color||'#7170ff'}}/>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:13}}>{r.name}</div>
-                  <div style={{fontSize:11,color:'#8a8f98',display:'flex',gap:4}}>
-                    <span>{r.type==='metro'?'🚇':r.type==='poi'?'📍':'⭐'}</span><span>{r.subtitle||''}</span>
-                  </div>
-                </div>
-                <span style={{fontSize:10,color:'#8a8f98',background:'rgba(255,255,255,0.04)',borderRadius:6,padding:'2px 6px'}}>
-                  {r.type==='metro'?'مترو':r.type==='poi'?'مکان':'من'}</span>
+                <span style={{width:10,height:10,borderRadius:'50%',background:r.color||'#7170ff',display:'inline-block',flexShrink:0}}/>
+                <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{r.name}</div><div style={{fontSize:11,color:'#8a8f98'}}>{r.subtitle||''}</div></div>
+                <span style={{fontSize:10,color:'#8a8f98',background:'rgba(255,255,255,0.04)',borderRadius:6,padding:'2px 6px'}}>{r.type==='metro'?'🚇':r.type==='poi'?'📍':'⭐'}</span>
               </div>
             ))}
           </div>}
@@ -322,119 +239,110 @@ export default function TehranMap(){
       </div>
     </div>
 
-    {/* Bottom Bar */}
-    <div style={S.bottomBar}>
-      <div style={S.bottomInner}>
-        <button onClick={()=>setPanel('list')} style={panel==='list'?S.btnAct:S.btn}>📍 {pts.length}</button>
-        <button onClick={()=>setPanel('add')} style={panel==='add'?S.btnAct:S.btn}>➕ جدید</button>
-        <button onClick={()=>{
-          clearRoute();
-          const map=mapRef.current;if(!map)return;
-          setRmode(true);
-          map.addListener('click',async (e:google.maps.MapMouseEvent)=>{
-            if(!e.latLng||!rmode)return;
-            if(!rf){
-              const p={name:'مبدأ',lat:e.latLng.lat(),lng:e.latLng.lng(),type:'user',color:'#22c55e'};
-              startRoute(p);
-            }else{
-              const p={name:'مقصد',lat:e.latLng.lat(),lng:e.latLng.lng(),type:'user',color:'#ef4444'};
-              const r=await getRoute(rf,p);
-              if(r){
-                const coords=r.geometry.coordinates.map((c:any)=>({lat:c[1],lng:c[0]}));
-                const poly=new google.maps.Polyline({path:coords,map:mapRef.current!,strokeColor:'#7170ff',strokeWeight:4,strokeOpacity:0.9});
-                polylineRef.current=poly;
-                mapRef.current!.fitBounds(coords.reduce((b:any,c:any)=>{b.extend(c);return b;},new google.maps.LatLngBounds()),50);
-                setRr({d:r.distance/1000,t:r.duration/60,route:r});
-              }
-              setRmode(false);
-            }
-          });
-        }} style={rmode?S.btnAct:S.btn}>🗺️ مسیر</button>
-        <button onClick={()=>{
-          const m=['both','metro','brt','off'];const i=m.indexOf(transitVis);
-          setTransitVis(m[(i+1)%4] as any);
-        }} style={{...S.btn,borderColor:transitVis!=='off'?'rgba(139,92,246,.5)':'rgba(255,255,255,0.06)',color:transitVis!=='off'?'#a78bfa':'#f7f8f8'}}>
-          🚇 {transitVis==='both'?'همه':transitVis==='metro'?'مترو':transitVis==='brt'?'BRT':'مخفی'}</button>
-        <button onClick={()=>setShowPoi(!showPoi)} style={{...S.btn,borderColor:showPoi?'rgba(34,197,94,.5)':'rgba(255,255,255,0.06)',color:showPoi?'#4ade80':'#f7f8f8'}}>
-          🏛️ مکان‌ها</button>
-        <button onClick={()=>{clearRoute();setPanel(null);setSel(null);}} style={S.btn}>✕ پاک</button>
+    {/* Bottom bar */}
+    <div style={style.bot}>
+      <div style={style.botI}>
+        <button onClick={()=>setPanel(panel==='list'?null:'list')} style={btn(panel==='list')}>📍 {pts.length}</button>
+        <button onClick={()=>setPanel(panel==='add'?null:'add')} style={btn(panel==='add')}>➕ جدید</button>
+        <button onClick={()=>{clearRoute();setRmode(true);}} style={btn(rmode)}>🗺️ مسیر</button>
+        <button onClick={()=>{setShowMetro(!showMetro);}} style={{...btn(showMetro),borderColor:showMetro?'rgba(94,106,210,.5)':'rgba(255,255,255,0.06)',color:showMetro?'#a78bfa':'#f7f8f8'}}>🚇 مترو</button>
+        <button onClick={()=>setShowPoi(!showPoi)} style={{...btn(showPoi),borderColor:showPoi?'rgba(34,197,94,.5)':'rgba(255,255,255,0.06)',color:showPoi?'#4ade80':'#f7f8f8'}}>🏛️ مکان‌ها</button>
       </div>
     </div>
 
     {/* Panel */}
-    {(panel||sel||rr||rmode)&&<div style={S.panel}>
-      {rmode&&<div style={{padding:10,background:'rgba(255,255,255,0.03)',borderRadius:10,border:'1px solid rgba(255,255,255,0.06)'}}>
+    {(panel||sel||rr||rmode)&&<div style={style.panel}>
+      {rmode&&<div style={{padding:10,borderRadius:10,border:'1px solid rgba(245,158,11,.3)',background:'rgba(245,158,11,.08)',marginBottom:8}}>
         <p style={{margin:'0 0 6px',fontSize:12,color:'#f59e0b'}}>{rf?'📍 مقصد را کلیک کنید':'📍 مبدأ را کلیک کنید'}</p>
-        <button onClick={clearRoute}
-          style={{width:'100%',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:8,padding:'6px 12px',color:'#ef4444',cursor:'pointer',fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>
-          ❌ لغو مسیریابی</button>
+        <button onClick={clearRoute} style={{background:'transparent',border:'1px solid rgba(239,68,68,.4)',borderRadius:8,padding:'6px 12px',color:'#ef4444',cursor:'pointer',fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>❌ لغو</button>
       </div>}
 
-      {rr&&<div style={{padding:12,background:'rgba(113,112,255,.08)',borderRadius:12,border:'1px solid rgba(113,112,255,.2)'}}>
-        <h4 style={{margin:'0 0 8px',color:'#7170ff',fontSize:14}}>🗺️ مسیریابی</h4>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-          <div style={{padding:'8px 12px',background:'rgba(255,255,255,0.03)',borderRadius:8}}>
-            <div style={{fontSize:11,color:'#8a8f98'}}>فاصله</div>
-            <div style={{fontWeight:700,fontSize:18,color:'#7170ff'}}>{rr.d.toFixed(1)} کیلومتر</div>
+      {rr&&<div style={{padding:12,borderRadius:12,border:'1px solid rgba(113,112,255,.3)',background:'rgba(113,112,255,.08)',marginBottom:8}}>
+        <h4 style={{margin:'0 0 6px',color:'#7170ff',fontSize:14}}>🗺️ مسیریابی</h4>
+        {rr.isMetro?<>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:6}}>
+            <div style={{padding:'8px 12px',background:'rgba(255,255,255,0.03)',borderRadius:8}}>
+              <div style={{fontSize:11,color:'#8a8f98'}}>ایستگاه‌ها</div><div style={{fontWeight:700,fontSize:18,color:'#a78bfa'} as any}>{rr.stops}</div></div>
+            <div style={{padding:'8px 12px',background:'rgba(255,255,255,0.03)',borderRadius:8}}>
+              <div style={{fontSize:11,color:'#8a8f98'}}>زمان</div><div style={{fontWeight:700,fontSize:18,color:'#22c55e'}}>~{rr.t} دقیقه</div></div>
           </div>
-          <div style={{padding:'8px 12px',background:'rgba(255,255,255,0.03)',borderRadius:8}}>
-            <div style={{fontSize:11,color:'#8a8f98'}}>زمان تخمینی</div>
-            <div style={{fontWeight:700,fontSize:18,color:'#22c55e'}}>~{rr.t.toFixed(0)} دقیقه</div>
+          <div style={{fontSize:11,color:'#8a8f98',display:'flex',gap:8,flexWrap:'wrap'}}>
+            {rr.transfers>0&&<span>🔄 {rr.transfers} تغییر خط</span>}
+            <span>🚇 خط {rr.lines.join(', ')}</span>
           </div>
-        </div>
-        <button onClick={clearRoute}
-          style={{width:'100%',marginTop:8,background:'transparent',border:'1px solid rgba(239,68,68,.3)',borderRadius:8,padding:'6px',color:'#ef4444',cursor:'pointer',fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>
-          ❌ پاک کردن مسیر</button>
+        </>:<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+          <div style={{padding:'8px 12px',background:'rgba(255,255,255,0.03)',borderRadius:8}}>
+            <div style={{fontSize:11,color:'#8a8f98'}}>فاصله</div><div style={{fontWeight:700,fontSize:18,color:'#7170ff'}}>{rr.d?.toFixed(1)} کیلومتر</div></div>
+          <div style={{padding:'8px 12px',background:'rgba(255,255,255,0.03)',borderRadius:8}}>
+            <div style={{fontSize:11,color:'#8a8f98'}}>زمان</div><div style={{fontWeight:700,fontSize:18,color:'#22c55e'}}>~{rr.t?.toFixed(0)} دقیقه</div></div>
+        </div>}
+        <button onClick={clearRoute} style={{width:'100%',marginTop:8,background:'transparent',border:'1px solid rgba(239,68,68,.4)',borderRadius:8,padding:'6px',color:'#ef4444',cursor:'pointer',fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>❌ پاک کردن مسیر</button>
       </div>}
 
-      {sel&&<div style={{padding:10,background:'rgba(255,255,255,0.02)',borderRadius:10}}>
-        <h4 style={{margin:'0 0 2px',fontSize:14}}>{sel.type==='metro'?'🚇':sel.type==='poi'?'📍':'⭐'} {sel.name}</h4>
-        <p style={{margin:'0 0 8px',fontSize:12,color:'#8a8f98'}}>{sel.subtitle||''}</p>
+      {sel&&<div style={{padding:10,borderRadius:10,border:'1px solid rgba(255,255,255,0.06)',marginBottom:8,background:'rgba(255,255,255,0.02)'}}>
+        <h4 style={{margin:'0 0 2px',fontSize:14}}>🚇 {sel.name}</h4>
+        <p style={{margin:'0 0 8px',fontSize:12,color:'#8a8f98'}}>خط {sel.lines?.join(', ')}</p>
         <div style={{display:'flex',gap:6}}>
-          <button onClick={()=>flyTo(sel.lat,sel.lng,16)} style={{flex:1,background:'var(--accent)',border:'none',borderRadius:8,padding:'7px',color:'white',cursor:'pointer',fontWeight:600,fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>📍 نمایش</button>
-          <button onClick={()=>startRoute(sel)} style={{flex:1,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,padding:'7px',color:'#f7f8f8',cursor:'pointer',fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>🗺️ مسیریابی</button>
+          <button onClick={()=>flyTo(sel.lat,sel.lng)} style={{flex:1,background:'#5e6ad2',border:'none',borderRadius:8,padding:'7px',color:'white',cursor:'pointer',fontWeight:600,fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>📍 نمایش</button>
+          <button onClick={()=>startRoute(sel)} style={{flex:1,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:8,padding:'7px',color:'#f7f8f8',cursor:'pointer',fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>🗺️ مسیر</button>
         </div>
+        {sel.id&&<div style={{marginTop:8}}><button onClick={()=>{
+          const stations=getStations();
+          const others=stations.filter(s=>s.id!==sel.id&&!s.disabled).slice(0,5);
+          setPanel('metro-route');
+        }} style={{width:'100%',background:'rgba(139,92,246,.12)',border:'1px solid rgba(139,92,246,.3)',borderRadius:8,padding:'7px',color:'#a78bfa',cursor:'pointer',fontSize:12,fontFamily:'Vazirmatn,system-ui'}}>
+        🔄 مسیریابی مترو</button></div>}
       </div>}
 
       {panel==='list'&&<div>
-        <h4 style={{fontSize:14,marginBottom:6}}>📍 نقاط من ({pts.length})</h4>
-        {pts.length===0?<p style={{color:'#8a8f98',textAlign:'center',fontSize:12}}>نقطه‌ای ذخیره نشده</p>:pts.map(p=>(
-          <div key={p.id} style={S.panelItem} onMouseEnter={e=>(e.target as HTMLElement).style.background='rgba(255,255,255,0.03)'}
+        <h4 style={{fontSize:14,marginBottom:6,color:'#f7f8f8'}}>📍 نقاط من ({pts.length})</h4>
+        {pts.length===0?<p style={{color:'#8a8f98',textAlign:'center',fontSize:12}}>نقطه‌ای ذخیره نشده</p>:pts.map((p,i)=>(
+          <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:10}}
+            onMouseEnter={e=>(e.target as HTMLElement).style.background='rgba(255,255,255,0.03)'}
             onMouseLeave={e=>(e.target as HTMLElement).style.background='transparent'}>
-            <span style={{fontSize:16}}>{ICON[p.category]||'📍'}</span>
+            <span>{ICON[p.category]||'📍'}</span>
             <div style={{flex:1}}><b style={{fontSize:13}}>{p.name}</b><br/><span style={{fontSize:11,color:'#8a8f98'}}>{LABEL[p.category]||'سایر'}</span></div>
-            <button onClick={()=>flyTo(p.lat,p.lng,16)}
-              style={{background:'transparent',border:'none',color:'#7170ff',cursor:'pointer',fontSize:14,padding:2}}>📍</button>
-            <button onClick={()=>{removePoint(p.id);setPts(getPoints());}}
-              style={{background:'transparent',border:'none',color:'#ef4444',cursor:'pointer',fontSize:16,padding:2}}>×</button>
+            <button onClick={()=>flyTo(p.lat,p.lng)} style={{background:'transparent',border:'none',color:'#7170ff',cursor:'pointer',padding:2}}>📍</button>
+            <button onClick={()=>{removePoint(p.id);setPts(getPoints());}} style={{background:'transparent',border:'none',color:'#ef4444',cursor:'pointer',padding:2}}>×</button>
           </div>
         ))}</div>}
 
       {panel==='add'&&<AddForm onSubmit={addP} onCancel={()=>setPanel(null)}/>}
+
+      {panel==='metro-route'&&sel?.id&&<div>
+        <h4 style={{fontSize:14,marginBottom:6}}>🚇 مسیریابی مترو از {sel.name}</h4>
+        <p style={{fontSize:12,color:'#8a8f98',marginBottom:8}}>مقصد را انتخاب کنید:</p>
+        {getStations().filter(s=>s.id!==sel.id&&!s.disabled).slice(0,20).map(s=>(
+          <div key={s.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:8,cursor:'pointer'}}
+            onMouseEnter={e=>(e.target as HTMLElement).style.background='rgba(255,255,255,0.03)'}
+            onMouseLeave={e=>(e.target as HTMLElement).style.background='transparent'}
+            onClick={()=>findMetroRoute(sel.id,s.id)}>
+            <span style={{width:8,height:8,borderRadius:'50%',background:lineColors[s.lines[0]]||'#71707a',display:'inline-block'}}/>
+            <div style={{flex:1}}><b style={{fontSize:13}}>{s.nameFa}</b></div>
+            <span style={{fontSize:10,color:'#8a8f98'}}>خط {s.lines.join(',')}</span>
+          </div>
+        ))}
+      </div>}
     </div>}
   </div>;
 }
 
-/* ===== ADD FORM ===== */
 function AddForm({onSubmit,onCancel}:{onSubmit:(n:string,c:Point['category'],no:string)=>void;onCancel:()=>void}){
   const [name,setName]=useState('');const [cat,setCat]=useState<Point['category']>('other');const [note,setNote]=useState('');
   return <form onSubmit={e=>{e.preventDefault();if(name.trim())onSubmit(name.trim(),cat,note.trim());}}>
-    <h4 style={{fontSize:14,marginBottom:2}}>➕ نقطه جدید</h4>
+    <h4 style={{fontSize:14,marginBottom:2,color:'#f7f8f8'}}>➕ نقطه جدید</h4>
     <p style={{fontSize:11.5,color:'#8a8f98',marginBottom:8}}>موقعیت فعلی مرکز نقشه ذخیره می‌شه.</p>
-    <input value={name} onChange={e=>setName(e.target.value)} placeholder='مثلاً: دانشگاه فرهنگیان مفتح' dir="rtl"
-      style={{width:'100%',padding:'9px 12px',marginBottom:8,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,color:'#f7f8f8',fontSize:13,outline:'none'}}/>
+    <input value={name} onChange={e=>setName(e.target.value)} placeholder='مثلاً: دانشگاه فرهنگیان مفتح' dir="rtl" style={{width:'100%',padding:'9px 12px',marginBottom:8,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,color:'#f7f8f8',fontSize:13,outline:'none',fontFamily:'Vazirmatn,system-ui'}}/>
     <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4,marginBottom:8}}>
-      {CATEGORIES.map(c=>(
+      {CATEGORIES.map(c=>
         <button key={c} type='button' onClick={()=>setCat(c)}
-          style={cat===c?{padding:'7px 4px',borderRadius:8,cursor:'pointer',fontSize:10.5,background:'var(--accent)',border:'none',color:'white',fontWeight:600}:
+          style={cat===c?{padding:'7px 4px',borderRadius:8,cursor:'pointer',fontSize:10.5,background:'#5e6ad2',border:'none',color:'white',fontWeight:600}:
             {padding:'7px 4px',borderRadius:8,cursor:'pointer',fontSize:10.5,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',color:'#d0d6e0'}}>
-          {ICON[c]} {LABEL[c]}</button>
-      ))}
+          {ICON[c]} {LABEL[c]}</button>)}
     </div>
-    <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder='یادداشت (اختیاری)' rows={2} dir="rtl"
-      style={{width:'100%',padding:'9px 12px',marginBottom:8,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,color:'#f7f8f8',fontSize:13,resize:'none',outline:'none'}}/>
+    <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder='یادداشت (اختیاری)' rows={2} dir="rtl" style={{width:'100%',padding:'9px 12px',marginBottom:8,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:10,color:'#f7f8f8',fontSize:13,resize:'none',outline:'none',fontFamily:'Vazirmatn,system-ui'}}/>
     <div style={{display:'flex',gap:6}}>
-      <button type='submit' style={{flex:1,background:'var(--accent)',border:'none',borderRadius:8,padding:'9px',color:'white',cursor:'pointer',fontWeight:700,fontSize:13,fontFamily:'Vazirmatn,system-ui'}}>✅ ذخیره</button>
+      <button type='submit' style={{flex:1,background:'#5e6ad2',border:'none',borderRadius:8,padding:'9px',color:'white',cursor:'pointer',fontWeight:700,fontSize:13,fontFamily:'Vazirmatn,system-ui'}}>✅ ذخیره</button>
       <button type='button' onClick={onCancel} style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8,padding:'9px 14px',color:'#d0d6e0',cursor:'pointer',fontSize:13,fontFamily:'Vazirmatn,system-ui'}}>انصراف</button>
     </div>
   </form>;
