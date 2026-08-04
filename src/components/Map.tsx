@@ -35,7 +35,7 @@ export default function TehranMap(){
   const [sq,setSq]=useState('');const [sres,setSres]=useState<{name:string,lat:number,lng:number,line:string,color:string}[]>([]);
   const load=useCallback(()=>setPts(getPoints()),[]);
 
-  useEffect(()=>{if(!mc.current||mapRef.current)return;const map=new maplibregl.Map({container:mc.current,style:{version:8,name:'Tehran Light',sources:{'carto':{type:'raster',tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'],tileSize:256,attribution:'© CARTO'}},layers:[{id:'base',type:'raster',source:'carto'}]},center:[51.389,35.6892],zoom:11);map.addControl(new maplibregl.NavigationControl(),'top-left');
+  useEffect(()=>{if(!mc.current||mapRef.current)return;const map=new maplibregl.Map({container:mc.current,style:{version:8,name:'Tehran Light',sources:{'carto':{type:'raster',tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'],tileSize:256,attribution:'CARTO'}},layers:[{id:'base',type:'raster',source:'carto'}]},center:[51.389,35.6892],zoom:11);map.addControl(new maplibregl.NavigationControl(),'top-left');
     map.on('load',()=>{mapRef.current=map;load();setTimeout(()=>map.resize(),200)});
     map.on('click',async e=>{
       if(!rmode)return;
