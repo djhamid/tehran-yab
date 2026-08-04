@@ -1,10 +1,15 @@
 @font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
 @font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-Medium.ttf') format('truetype');font-weight:500;font-display:swap}
 @font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
-
-:root{--bg:#0f172a;--fg:#f8fafc;--surface:#1e293b;--surface-light:#334155}
-*{box-sizing:border-box;direction:rtl}
-html,body{margin:0;padding:0;height:100%;overflow:hidden;font-family:'Vazirmatn',system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-.maplibregl-popup-content{background:var(--surface)!important;color:var(--fg)!important;border:1px solid var(--surface-light)!important;border-radius:12px!important;padding:16px!important;font-family:'Vazirmatn',system-ui,sans-serif!important;font-size:14px}
-input,textarea,button{font-family:'Vazirmatn',system-ui,sans-serif}
-.maplibregl-ctrl-attrib{background:rgba(15,23,42,.85)!important;color:#94a3b8!important;font-size:10px!important}
+:root{--bg:#0b1120;--fg:#f1f5f9;--surface:#1a2332;--surface2:#243044;--border:#2d3b4f;--accent:#3b82f6;--accent2:#8b5cf6;--success:#22c55e;--danger:#ef4444;--warning:#f59e0b}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;font-family:'Vazirmatn',system-ui,sans-serif;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased}
+input,textarea,button,select{font-family:'Vazirmatn',system-ui,sans-serif}
+.maplibregl-popup{font-family:'Vazirmatn',system-ui,sans-serif}
+.maplibregl-popup-content{background:var(--surface)!important;color:var(--fg)!important;border:1px solid var(--border)!important;border-radius:16px!important;padding:18px!important;font-size:14px!important;box-shadow:0 8px 32px rgba(0,0,0,0.4)!important}
+.maplibregl-popup-close-button{color:#94a3b8!important;font-size:18px!important;padding:4px 8px!important}
+.maplibregl-ctrl-attrib{background:rgba(11,17,32,.85)!important;color:#64748b!important;font-size:10px!important;padding:2px 8px!important;border-radius:8px!important}
+.maplibregl-ctrl-top-left .maplibregl-ctrl{margin:12px!important;border-radius:12px!important;overflow:hidden!important;box-shadow:0 4px 12px rgba(0,0,0,0.3)!important}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
