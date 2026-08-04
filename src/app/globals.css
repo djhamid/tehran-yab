@@ -1,8 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap');
+@font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+@font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-Medium.ttf') format('truetype');font-weight:500;font-display:swap}
+@font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
 
 :root{--bg:#0f172a;--fg:#f8fafc;--surface:#1e293b;--surface-light:#334155}
-*{box-sizing:border-box}
+*{box-sizing:border-box;direction:rtl}
 html,body{margin:0;padding:0;height:100%;overflow:hidden;font-family:'Vazirmatn',system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-.maplibregl-popup-content{background:var(--surface)!important;color:var(--fg)!important;border:1px solid var(--surface-light)!important;border-radius:12px!important;padding:16px!important;font-family:'Vazirmatn',system-ui,sans-serif!important}
+.maplibregl-popup-content{background:var(--surface)!important;color:var(--fg)!important;border:1px solid var(--surface-light)!important;border-radius:12px!important;padding:16px!important;font-family:'Vazirmatn',system-ui,sans-serif!important;font-size:14px}
 input,textarea,button{font-family:'Vazirmatn',system-ui,sans-serif}
 .maplibregl-ctrl-attrib{background:rgba(15,23,42,.85)!important;color:#94a3b8!important;font-size:10px!important}
