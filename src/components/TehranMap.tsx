@@ -7,6 +7,8 @@ import graphRaw from '@/data/graph.json';
 import linesRaw from '@/data/lines.json';
 import pathsRaw from '@/data/paths.json';
 import { findRoute, haversineKm, makeBidirectional, nearestStations, walkMinutes } from '@/lib/route-finder';
+import { geocode, type GeoResult } from '@/lib/geocode';
+import { loadPlaces, newPlaceId, PLACE_ICONS, storePlaces, type SavedPlace } from '@/lib/places';
 import type { Graph, LinesMap, RouteResult, StationsMap } from '@/types/tehgo-metro';
 
 const stations = stationsRaw as unknown as StationsMap;
@@ -17,9 +19,12 @@ const paths = pathsRaw as unknown as Record<string, { paths: { id: string; stati
 const faNum = (n: number | string) => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 const normalize = (s: string) => s.replace(/[آا]/g, 'ا').replace(/ی/g, 'ي').replace(/ک/g, 'ك').replace(/‌/g, ' ').toLowerCase();
 const faName = (id: string) => stations[id]?.translations?.fa || stations[id]?.name || id;
+const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+const stCoord = (id: string) => ({ lat: Number(stations[id].latitude), lng: Number(stations[id].longitude) });
 
-/** An endpoint: a station (id set) or an arbitrary point (geolocation / map pick). */
+/** An endpoint: a station (id set) or an arbitrary point (geolocation / map pick / geocoded place). */
 type EP = { id?: string; lat: number; lng: number; label: string };
+type ChatMsg = { role: 'user' | 'assistant' | 'action'; content: string };
 
 type FullRoute = {
   metro: RouteResult;
@@ -63,6 +68,29 @@ function computeFullRoute(a: EP, b: EP): FullRoute | null {
   return { metro, walkFrom, walkTo, totalMin: metro.minutes + (walkFrom?.min || 0) + (walkTo?.min || 0) };
 }
 
+/** Google Maps directions link (walking by default) — opens the native app on mobile. */
+const gmapsUrl = (a: { lat: number; lng: number }, b: { lat: number; lng: number }, mode = 'walking') =>
+  `https://www.google.com/maps/dir/?api=1&origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&travelmode=${mode}`;
+
+/** Hide <map>{...}</map> command blocks (incl. a partially streamed one) from chat bubbles. */
+const stripCmd = (t: string) => t
+  .replace(/<map>[\s\S]*?<\/map>/g, '')
+  .replace(/<map>[\s\S]*$/, '')
+  .replace(/<\/?m?a?p?>?\s*$/, '')
+  .trim();
+
+/** Debounced Nominatim search for free-text inputs. */
+function useGeoSearch(q: string, active: boolean): GeoResult[] {
+  const [results, setResults] = useState<GeoResult[]>([]);
+  useEffect(() => {
+    if (!active || q.trim().length < 3) { setResults([]); return; }
+    let dead = false;
+    const t = setTimeout(() => geocode(q).then(r => { if (!dead) setResults(r); }).catch(() => {}), 700);
+    return () => { dead = true; clearTimeout(t); setResults([]); };
+  }, [q, active]);
+  return results;
+}
+
 // ---- static GeoJSON built once at module load ----
 const lineFeatures = {
   type: 'FeatureCollection' as const,
@@ -86,11 +114,13 @@ export default function TehranMap() {
   const mapEl = useRef<HTMLDivElement>(null);
   const map = useRef<ml.Map | null>(null);
   const routeMarkers = useRef<ml.Marker[]>([]);
-  const pickingRef = useRef<'A' | 'B' | null>(null);
+  const placeMarkers = useRef<ml.Marker[]>([]);
+  const tempMarker = useRef<ml.Marker | null>(null);
+  const pickingRef = useRef<'A' | 'B' | 'P' | null>(null);
 
   const [ready, setReady] = useState(false);
-  const [sheet, setSheet] = useState<'route' | 'ai' | null>(null);
-  const [picking, setPicking] = useState<'A' | 'B' | null>(null);
+  const [sheet, setSheet] = useState<'route' | 'ai' | 'places' | null>(null);
+  const [picking, setPicking] = useState<'A' | 'B' | 'P' | null>(null);
 
   // top search
   const [sq, setSq] = useState('');
@@ -104,13 +134,28 @@ export default function TehranMap() {
   const [focusEP, setFocusEP] = useState<'A' | 'B' | null>(null);
   const [route, setRoute] = useState<FullRoute | null>(null);
 
+  // saved places
+  const [places, setPlaces] = useState<SavedPlace[]>(() => loadPlaces());
+  const placesRef = useRef(places);
+  const [pName, setPName] = useState('');
+  const [pIcon, setPIcon] = useState('📍');
+  const [pQuery, setPQuery] = useState('');
+  const [pLoc, setPLoc] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [pFocus, setPFocus] = useState(false);
+
   // AI chat
-  const [chat, setChat] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const [chat, setChat] = useState<ChatMsg[]>([]);
   const [aiQ, setAiQ] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   pickingRef.current = picking;
+  placesRef.current = places;
+  useEffect(() => { storePlaces(places); }, [places]);
+
+  const geoA = useGeoSearch(qA, focusEP === 'A' && !epA);
+  const geoB = useGeoSearch(qB, focusEP === 'B' && !epB);
+  const geoP = useGeoSearch(pQuery, pFocus && !pLoc);
 
   // ---- map init ----
   useEffect(() => {
@@ -156,14 +201,19 @@ export default function TehranMap() {
 
       m.on('click', e => {
         const hits = m.queryRenderedFeatures(e.point, { layers: ['stations-layer'] });
-        if (hits.length) { openStationPopup(m, hits[0].properties!.id as string); return; }
-        // empty-map click while picking → point endpoint
         const pick = pickingRef.current;
         if (pick) {
-          const ep: EP = { lat: e.lngLat.lat, lng: e.lngLat.lng, label: 'نقطه انتخابی روی نقشه' };
+          // picking wins over popups; a station hit gives an exact station endpoint
+          const hitId = hits.length ? (hits[0].properties!.id as string) : null;
+          const ep: EP = hitId
+            ? { id: hitId, ...stCoord(hitId), label: faName(hitId) }
+            : { lat: e.lngLat.lat, lng: e.lngLat.lng, label: 'نقطه انتخابی روی نقشه' };
+          if (pick === 'P') { setPLoc({ lat: ep.lat, lng: ep.lng, label: ep.label }); setPicking(null); setSheet('places'); return; }
           if (pick === 'A') { setEpA(ep); setQA(ep.label); } else { setEpB(ep); setQB(ep.label); }
           setPicking(null); setSheet('route');
+          return;
         }
+        if (hits.length) openStationPopup(m, hits[0].properties!.id as string);
       });
 
       map.current = m;
@@ -189,6 +239,32 @@ export default function TehranMap() {
     pop.getElement().querySelector('.pop-to')?.addEventListener('click', () => { setEpB(ep); setQB(fa); pop.remove(); setSheet('route'); });
   };
 
+  const openPlacePopup = (m: ml.Map, p: SavedPlace) => {
+    const body = `<div class="pop-title">${p.icon} ${esc(p.name)}</div><div class="pop-sub">مکان ذخیره‌شده</div>
+      <div class="pop-actions"><button class="pop-from">مبدأ</button><button class="pop-to">مقصد</button><button class="pop-del">🗑</button></div>`;
+    const pop = new ml.Popup({ offset: 22 }).setLngLat([p.lng, p.lat]).setHTML(body).addTo(m);
+    const ep: EP = { lat: p.lat, lng: p.lng, label: p.name };
+    pop.getElement().querySelector('.pop-from')?.addEventListener('click', () => { setEpA(ep); setQA(p.name); pop.remove(); setSheet('route'); });
+    pop.getElement().querySelector('.pop-to')?.addEventListener('click', () => { setEpB(ep); setQB(p.name); pop.remove(); setSheet('route'); });
+    pop.getElement().querySelector('.pop-del')?.addEventListener('click', () => { setPlaces(ps => ps.filter(x => x.id !== p.id)); pop.remove(); });
+  };
+
+  // ---- saved-place markers ----
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !ready) return;
+    placeMarkers.current.forEach(mk => mk.remove());
+    placeMarkers.current = places.map(p => {
+      const el = document.createElement('div');
+      el.className = 'place-marker';
+      el.textContent = p.icon;
+      el.title = p.name;
+      el.addEventListener('click', ev => { ev.stopPropagation(); openPlacePopup(m, p); });
+      return new ml.Marker({ element: el, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(m);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [places, ready]);
+
   // ---- route computation + drawing ----
   useEffect(() => {
     if (!epA || !epB) { setRoute(null); return; }
@@ -202,15 +278,21 @@ export default function TehranMap() {
     routeMarkers.current = [];
     const src = m.getSource('route') as ml.GeoJSONSource | undefined;
     if (!src) return;
-    if (!route || !epA || !epB) { src.setData({ type: 'FeatureCollection', features: [] }); return; }
+    if (!epA || !epB) { src.setData({ type: 'FeatureCollection', features: [] }); return; }
 
     const coord = (id: string): [number, number] => [Number(stations[id].longitude), Number(stations[id].latitude)];
-    const features: GeoJSON.Feature[] = route.metro.legs.map(leg => ({
-      type: 'Feature', properties: { kind: 'metro', color: lines[leg.line]?.color || '#5eead4' },
-      geometry: { type: 'LineString', coordinates: leg.stationIds.map(coord) },
-    }));
-    if (route.walkFrom) features.push({ type: 'Feature', properties: { kind: 'walk' }, geometry: { type: 'LineString', coordinates: [[epA.lng, epA.lat], coord(route.walkFrom.to)] } });
-    if (route.walkTo) features.push({ type: 'Feature', properties: { kind: 'walk' }, geometry: { type: 'LineString', coordinates: [coord(route.walkTo.from), [epB.lng, epB.lat]] } });
+    const features: GeoJSON.Feature[] = [];
+    if (route) {
+      features.push(...route.metro.legs.map(leg => ({
+        type: 'Feature' as const, properties: { kind: 'metro', color: lines[leg.line]?.color || '#5eead4' },
+        geometry: { type: 'LineString' as const, coordinates: leg.stationIds.map(coord) },
+      })));
+      if (route.walkFrom) features.push({ type: 'Feature', properties: { kind: 'walk' }, geometry: { type: 'LineString', coordinates: [[epA.lng, epA.lat], coord(route.walkFrom.to)] } });
+      if (route.walkTo) features.push({ type: 'Feature', properties: { kind: 'walk' }, geometry: { type: 'LineString', coordinates: [coord(route.walkTo.from), [epB.lng, epB.lat]] } });
+    } else {
+      // no metro route → dashed direct walking line
+      features.push({ type: 'Feature', properties: { kind: 'walk' }, geometry: { type: 'LineString', coordinates: [[epA.lng, epA.lat], [epB.lng, epB.lat]] } });
+    }
     src.setData({ type: 'FeatureCollection', features });
 
     for (const [ep, color] of [[epA, '#22c55e'], [epB, '#ef4444']] as const) {
@@ -228,10 +310,16 @@ export default function TehranMap() {
     if (which === 'A') { setEpA(ep); setQA(text); } else { setEpB(ep); setQB(text); }
     setFocusEP(null);
   };
-  const useMyLocation = () => {
-    navigator.geolocation?.getCurrentPosition(
-      p => setEndpoint('A', { lat: p.coords.latitude, lng: p.coords.longitude, label: 'موقعیت من' }, 'موقعیت من'),
-      () => alert('دسترسی به موقعیت مکانی ممکن نیست'));
+  const geoloc = (): Promise<EP | null> => new Promise(res => {
+    if (!navigator.geolocation) return res(null);
+    navigator.geolocation.getCurrentPosition(
+      p => res({ lat: p.coords.latitude, lng: p.coords.longitude, label: 'موقعیت من' }),
+      () => res(null), { enableHighAccuracy: true, timeout: 8000 });
+  });
+  const useMyLocation = async () => {
+    const ep = await geoloc();
+    if (ep) setEndpoint('A', ep, ep.label);
+    else alert('دسترسی به موقعیت مکانی ممکن نیست');
   };
   const swap = () => {
     setEpA(epB); setEpB(epA);
@@ -239,7 +327,74 @@ export default function TehranMap() {
   };
   const clearRoute = () => { setEpA(null); setEpB(null); setQA(''); setQB(''); setRoute(null); };
 
-  // ---- AI chat ----
+  const matchPlaces = (q: string): SavedPlace[] => {
+    const qn = normalize(q.trim());
+    if (!qn) return places.slice(0, 6);
+    return places.filter(p => normalize(p.name).includes(qn)).slice(0, 4);
+  };
+
+  const savePlace = () => {
+    if (!pName.trim() || !pLoc) return;
+    setPlaces(ps => [...ps, { id: newPlaceId(), name: pName.trim(), icon: pIcon, lat: pLoc.lat, lng: pLoc.lng }]);
+    setPName(''); setPQuery(''); setPLoc(null); setPIcon('📍');
+  };
+
+  // ---- AI: place resolution + map commands ----
+  /** saved place → metro station → Nominatim, in that order. */
+  const resolvePlace = useCallback(async (name: string): Promise<EP | null> => {
+    const raw = (name || '').trim();
+    if (!raw) return null;
+    const n = normalize(raw);
+    if (n.includes('موقعيت من') || /my ?location|current location|here/i.test(raw)) return geoloc();
+    const p = placesRef.current.find(x => normalize(x.name) === n)
+      || placesRef.current.find(x => normalize(x.name).includes(n) || n.includes(normalize(x.name)));
+    if (p) return { lat: p.lat, lng: p.lng, label: p.name };
+    const st = searchStations(raw)[0];
+    if (st) return { id: st.id, ...stCoord(st.id), label: st.fa };
+    const g = (await geocode(raw).catch(() => [] as GeoResult[]))[0];
+    if (g) return { lat: g.lat, lng: g.lng, label: g.label };
+    return null;
+  }, []);
+
+  const dropTempMarker = (ep: EP) => {
+    const m = map.current;
+    if (!m) return;
+    tempMarker.current?.remove();
+    const el = document.createElement('div');
+    el.className = 'place-marker temp';
+    el.textContent = '📍';
+    tempMarker.current = new ml.Marker({ element: el, anchor: 'center' }).setLngLat([ep.lng, ep.lat]).addTo(m);
+  };
+
+  /** Execute one <map> command emitted by the model; returns a status chip for the chat. */
+  const runCommand = async (cmd: { action?: string; from?: string; to?: string; place?: string; name?: string }): Promise<string> => {
+    if (cmd.action === 'route') {
+      const [a, b] = await Promise.all([resolvePlace(cmd.from || 'موقعیت من'), resolvePlace(cmd.to || '')]);
+      if (!a) return `«${cmd.from || 'موقعیت من'}» پیدا نشد — مبدأ را دقیق‌تر بگویید.`;
+      if (!b) return `«${cmd.to}» پیدا نشد — مقصد را دقیق‌تر بگویید.`;
+      setEndpoint('A', a, a.label);
+      setEndpoint('B', b, b.label);
+      setTimeout(() => setSheet('route'), 700);
+      return `🗺️ مسیر «${a.label}» ← «${b.label}» روی نقشه نمایش داده شد`;
+    }
+    if (cmd.action === 'show') {
+      const p = await resolvePlace(cmd.place || cmd.name || '');
+      if (!p) return `«${cmd.place || cmd.name}» پیدا نشد.`;
+      map.current?.flyTo({ center: [p.lng, p.lat], zoom: 14.5, duration: 800 });
+      if (p.id) { if (map.current) openStationPopup(map.current, p.id); } else dropTempMarker(p);
+      setTimeout(() => setSheet(null), 700);
+      return `📍 «${p.label}» روی نقشه نمایش داده شد`;
+    }
+    if (cmd.action === 'save') {
+      const p = await resolvePlace(cmd.place || '');
+      if (!p) return `مکان «${cmd.place}» برای ذخیره پیدا نشد.`;
+      const nm = (cmd.name || p.label).trim();
+      setPlaces(ps => [...ps, { id: newPlaceId(), name: nm, icon: '📍', lat: p.lat, lng: p.lng }]);
+      return `⭐ «${nm}» به مکان‌های شما اضافه شد`;
+    }
+    return '';
+  };
+
   const routeContext = useCallback(() => {
     if (!route) return 'کاربر هنوز مسیری انتخاب نکرده است.';
     const legs = route.metro.legs.map(l =>
@@ -247,11 +402,26 @@ export default function TehranMap() {
     return `مسیر فعلی کاربر:\n${route.walkFrom ? `پیاده‌روی ${route.walkFrom.min} دقیقه تا ایستگاه ${faName(route.walkFrom.to)}\n` : ''}${legs}\n${route.walkTo ? `پیاده‌روی ${route.walkTo.min} دقیقه از ایستگاه ${faName(route.walkTo.from)} تا مقصد\n` : ''}زمان کل تقریبی: ${route.totalMin} دقیقه، ${route.metro.totalTransfers} تعویض خط.`;
   }, [route]);
 
+  const sysPrompt = useCallback(() => {
+    const names = places.map(p => `«${p.name}»`).join('، ') || 'هیچ';
+    return `تو دستیار مسیریابی مترو تهران در اپ «تهران‌یاب» هستی و کنترل نقشه اپ را در اختیار داری. کوتاه، دقیق و به فارسی جواب بده. شبکه مترو تهران ۷ خط دارد.
+مکان‌های ذخیره‌شده کاربر: ${names}.
+${routeContext()}
+
+کنترل نقشه — وقتی کاربر مسیر می‌خواهد، اول یک جمله کوتاه بگو و بعد در آخرین خط پاسخ دقیقاً یک دستور با این قالب بنویس:
+<map>{"action":"route","from":"مبدأ","to":"مقصد"}</map>
+- اگر کاربر مبدأ نگفت، از "موقعیت من" استفاده کن.
+- نام مکان را همان‌طور که کاربر گفت بنویس: مکان ذخیره‌شده، نام ایستگاه مترو، یا هر مکان معروف تهران (مثل «برج میلاد»)؛ اپ خودش پیدایش می‌کند.
+نمایش یک مکان روی نقشه: <map>{"action":"show","place":"نام"}</map>
+ذخیره یک مکان جدید: <map>{"action":"save","name":"نام دلخواه","place":"مکان یا آدرس"}</map>
+جز این سه حالت هرگز تگ <map> ننویس و داخل آن فقط JSON معتبر بگذار.`;
+  }, [places, routeContext]);
+
   const askAI = async () => {
     const q = aiQ.trim();
     if (!q || aiBusy) return;
     setAiQ('');
-    const history = [...chat, { role: 'user' as const, content: q }];
+    const history: ChatMsg[] = [...chat, { role: 'user', content: q }];
     setChat([...history, { role: 'assistant', content: '' }]);
     setAiBusy(true);
     try {
@@ -259,8 +429,8 @@ export default function TehranMap() {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           messages: [
-            { role: 'system', content: `تو دستیار مسیریابی مترو تهران در اپ «تهران‌یاب» هستی. کوتاه، دقیق و به فارسی جواب بده. شبکه مترو تهران ۷ خط دارد.\n${routeContext()}` },
-            ...history.slice(-8),
+            { role: 'system', content: sysPrompt() },
+            ...history.filter(m => m.role !== 'action').slice(-8).map(m => ({ role: m.role, content: m.content })),
           ],
         }),
       });
@@ -278,11 +448,22 @@ export default function TehranMap() {
           if (!ln.startsWith('data: ') || ln === 'data: [DONE]') continue;
           try {
             const delta = JSON.parse(ln.slice(6)).choices?.[0]?.delta?.content;
-            if (delta) { text += delta; setChat([...history, { role: 'assistant', content: text }]); }
+            if (delta) { text += delta; setChat([...history, { role: 'assistant', content: stripCmd(text) }]); }
           } catch { /* partial json */ }
         }
       }
-      if (!text) setChat([...history, { role: 'assistant', content: 'پاسخی دریافت نشد.' }]);
+      // extract + run map commands, hidden from the bubble
+      const cmds = [...text.matchAll(/<map>([\s\S]*?)<\/map>/g)]
+        .map(m => { try { return JSON.parse(m[1]); } catch { return null; } })
+        .filter(Boolean) as { action?: string }[];
+      const shown = stripCmd(text);
+      const base: ChatMsg[] = shown ? [...history, { role: 'assistant', content: shown }] : [...history];
+      setChat(base);
+      if (!shown && !cmds.length) setChat([...history, { role: 'assistant', content: 'پاسخی دریافت نشد.' }]);
+      for (const c of cmds) {
+        const note = await runCommand(c);
+        if (note) setChat(prev => [...prev, { role: 'action', content: note }]);
+      }
     } catch {
       setChat([...history, { role: 'assistant', content: 'خطا در ارتباط با دستیار. کلید Cerebras را در .env بررسی کنید.' }]);
     } finally {
@@ -295,19 +476,36 @@ export default function TehranMap() {
   const epInput = (which: 'A' | 'B') => {
     const q = which === 'A' ? qA : qB;
     const setQ = which === 'A' ? setQA : setQB;
-    const results = focusEP === which ? searchStations(q) : [];
+    const stationResults = focusEP === which ? searchStations(q) : [];
+    const placeResults = focusEP === which ? matchPlaces(q) : [];
+    const geoResults = which === 'A' ? geoA : geoB;
+    const open = focusEP === which && (placeResults.length > 0 || stationResults.length > 0 || geoResults.length > 0);
     return (
       <div className="ep-input">
-        <input value={q} placeholder={which === 'A' ? 'مبدأ — ایستگاه یا موقعیت' : 'مقصد — ایستگاه یا نقطه روی نقشه'}
+        <input value={q} placeholder={which === 'A' ? 'مبدأ — ایستگاه، مکان یا آدرس' : 'مقصد — ایستگاه، مکان یا آدرس'}
           onChange={e => { setQ(e.target.value); (which === 'A' ? setEpA : setEpB)(null); }}
           onFocus={() => setFocusEP(which)} onBlur={() => setTimeout(() => setFocusEP(f => f === which ? null : f), 200)} />
-        {results.length > 0 && (
+        {open && (
           <div className="s-drop" style={{ zIndex: 60 }}>
-            {results.map(r => (
-              <div key={r.id} className="s-item" onMouseDown={() => setEndpoint(which, { id: r.id, lat: Number(stations[r.id].latitude), lng: Number(stations[r.id].longitude), label: r.fa }, r.fa)}>
+            {placeResults.map(p => (
+              <div key={p.id} className="s-item" onMouseDown={() => setEndpoint(which, { lat: p.lat, lng: p.lng, label: p.name }, p.name)}>
+                <span className="em">{p.icon}</span>
+                <span className="nm">{p.name}</span>
+                <span className="ln">مکان ذخیره‌شده</span>
+              </div>
+            ))}
+            {stationResults.map(r => (
+              <div key={r.id} className="s-item" onMouseDown={() => setEndpoint(which, { id: r.id, ...stCoord(r.id), label: r.fa }, r.fa)}>
                 <span className="dot" style={{ background: r.color }} />
                 <span className="nm">{r.fa}</span>
                 <span className="ln">{r.lineNames}</span>
+              </div>
+            ))}
+            {geoResults.map((g, i) => (
+              <div key={i} className="s-item" onMouseDown={() => setEndpoint(which, { lat: g.lat, lng: g.lng, label: g.label }, g.label)}>
+                <span className="em">📍</span>
+                <span className="nm">{g.label}</span>
+                <span className="ln">{g.sub}</span>
               </div>
             ))}
           </div>
@@ -317,6 +515,8 @@ export default function TehranMap() {
   };
 
   const searchResults = sOpen ? searchStations(sq) : [];
+  const searchPlaces = sOpen && sq.trim() ? matchPlaces(sq) : [];
+  const directKm = epA && epB ? haversineKm(epA.lat, epA.lng, epB.lat, epB.lng) : 0;
 
   return (
     <div style={{ width: '100%', height: '100dvh', position: 'relative', overflow: 'hidden' }}>
@@ -326,11 +526,22 @@ export default function TehranMap() {
       <div className="top">
         <div className="logo"><span>تهران</span>‌یاب</div>
         <div className="s-wrap">
-          <input value={sq} placeholder="جستجوی ایستگاه..." onChange={e => { setSq(e.target.value); setSOpen(true); }}
+          <input value={sq} placeholder="جستجوی ایستگاه یا مکان..." onChange={e => { setSq(e.target.value); setSOpen(true); }}
             onFocus={() => setSOpen(true)} onBlur={() => setTimeout(() => setSOpen(false), 200)} />
           <svg className="s-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-          {searchResults.length > 0 && (
+          {(searchResults.length > 0 || searchPlaces.length > 0) && (
             <div className="s-drop">
+              {searchPlaces.map(p => (
+                <div key={p.id} className="s-item" onMouseDown={() => {
+                  setSq(p.name); setSOpen(false);
+                  map.current?.flyTo({ center: [p.lng, p.lat], zoom: 14.5, duration: 600 });
+                  if (map.current) openPlacePopup(map.current, p);
+                }}>
+                  <span className="em">{p.icon}</span>
+                  <span className="nm">{p.name}</span>
+                  <span className="ln">مکان ذخیره‌شده</span>
+                </div>
+              ))}
               {searchResults.map(r => (
                 <div key={r.id} className="s-item" onMouseDown={() => {
                   setSq(r.fa); setSOpen(false);
@@ -348,7 +559,7 @@ export default function TehranMap() {
         </div>
       </div>
 
-      {picking && <div className="hint">روی نقشه بزنید تا {picking === 'A' ? 'مبدأ' : 'مقصد'} انتخاب شود</div>}
+      {picking && <div className="hint">روی نقشه بزنید تا {picking === 'A' ? 'مبدأ' : picking === 'B' ? 'مقصد' : 'مکان'} انتخاب شود</div>}
 
       {/* floating actions */}
       <div className="fabs">
@@ -358,7 +569,11 @@ export default function TehranMap() {
         </button>
         <button className="fab" onClick={() => setSheet('ai')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3c-4.97 0-9 3.58-9 8 0 1.9.74 3.64 1.98 5.01L4 21l4.36-1.45A10.7 10.7 0 0 0 12 20c4.97 0 9-3.58 9-8s-4.03-9-9-9z" /></svg>
-          دستیار هوشمند
+          دستیار
+        </button>
+        <button className="fab" onClick={() => setSheet('places')}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+          مکان‌ها
         </button>
       </div>
 
@@ -391,9 +606,14 @@ export default function TehranMap() {
             {(epA || epB) && <button className="chip" onClick={clearRoute}>پاک کردن</button>}
           </div>
 
-          {epA && epB && !route && <div className="walk">مسیری بین این دو نقطه پیدا نشد.</div>}
+          {epA && epB && !route && (
+            <div className="walk col">
+              <div>🚶 <span>مسیر مترویی لازم نیست یا پیدا نشد — فاصله مستقیم حدود <b>{faNum(directKm.toFixed(1))}</b> کیلومتر ({faNum(walkMinutes(directKm))} دقیقه پیاده)</span></div>
+              <a className="gpill" target="_blank" rel="noreferrer" href={gmapsUrl(epA, epB, 'walking')}>🗺️ مسیر پیاده در Google Maps</a>
+            </div>
+          )}
 
-          {route && (
+          {route && epA && epB && (
             <>
               <div className="stats">
                 <div className="stat"><b>{faNum(route.totalMin)}</b><span>دقیقه</span></div>
@@ -401,8 +621,13 @@ export default function TehranMap() {
                 <div className="stat"><b>{faNum(route.metro.totalTransfers)}</b><span>تعویض خط</span></div>
               </div>
 
+              <a className="gpill wide" target="_blank" rel="noreferrer" href={gmapsUrl(epA, epB, 'transit')}>🗺️ مشاهده کل مسیر در Google Maps</a>
+
               {route.walkFrom && (
-                <div className="walk">🚶 <span>پیاده‌روی تا ایستگاه <b>{faName(route.walkFrom.to)}</b> — حدود <b>{faNum(route.walkFrom.min)}</b> دقیقه ({faNum(route.walkFrom.km.toFixed(1))} کیلومتر)</span></div>
+                <div className="walk col">
+                  <div>🚶 <span>پیاده‌روی تا ایستگاه <b>{faName(route.walkFrom.to)}</b> — حدود <b>{faNum(route.walkFrom.min)}</b> دقیقه ({faNum(route.walkFrom.km.toFixed(1))} کیلومتر)</span></div>
+                  <a className="gpill" target="_blank" rel="noreferrer" href={gmapsUrl(epA, stCoord(route.walkFrom.to), 'walking')}>🗺️ مسیر پیاده در Google Maps</a>
+                </div>
               )}
 
               {route.metro.legs.map((leg, i) => {
@@ -434,7 +659,10 @@ export default function TehranMap() {
               })}
 
               {route.walkTo && (
-                <div className="walk">🚶 <span>پیاده‌روی از ایستگاه <b>{faName(route.walkTo.from)}</b> تا مقصد — حدود <b>{faNum(route.walkTo.min)}</b> دقیقه ({faNum(route.walkTo.km.toFixed(1))} کیلومتر)</span></div>
+                <div className="walk col">
+                  <div>🚶 <span>پیاده‌روی از ایستگاه <b>{faName(route.walkTo.from)}</b> تا مقصد — حدود <b>{faNum(route.walkTo.min)}</b> دقیقه ({faNum(route.walkTo.km.toFixed(1))} کیلومتر)</span></div>
+                  <a className="gpill" target="_blank" rel="noreferrer" href={gmapsUrl(stCoord(route.walkTo.from), epB, 'walking')}>🗺️ مسیر پیاده در Google Maps</a>
+                </div>
               )}
 
               <button className="btn btn-ghost" style={{ marginTop: 4 }} onClick={() => { setSheet('ai'); }}>
@@ -442,6 +670,71 @@ export default function TehranMap() {
               </button>
             </>
           )}
+        </div>
+      </div>
+
+      {/* places sheet */}
+      <div className={`sheet ${sheet === 'places' ? 'show' : ''}`}>
+        <div className="sheet-handle" />
+        <div className="sheet-header">
+          <div className="sheet-title">مکان‌های من</div>
+          <button className="sheet-close" onClick={() => setSheet(null)}>✕</button>
+        </div>
+        <div className="sheet-body">
+          {places.length === 0 && (
+            <div className="walk">مکانی مثل «دانشگاه» یا «خانه خاله» ذخیره کنید تا در مسیریابی و دستیار هوشمند با نامش استفاده شود.</div>
+          )}
+          {places.map(p => (
+            <div key={p.id} className="place-row">
+              <button className="p-main" onClick={() => { map.current?.flyTo({ center: [p.lng, p.lat], zoom: 14.5, duration: 600 }); setSheet(null); }}>
+                <span className="p-ic">{p.icon}</span>
+                <span className="p-nm">{p.name}</span>
+              </button>
+              <button className="p-act from" onClick={() => { setEndpoint('A', { lat: p.lat, lng: p.lng, label: p.name }, p.name); setSheet('route'); }}>مبدأ</button>
+              <button className="p-act to" onClick={() => { setEndpoint('B', { lat: p.lat, lng: p.lng, label: p.name }, p.name); setSheet('route'); }}>مقصد</button>
+              <button className="p-act del" title="حذف" onClick={() => setPlaces(ps => ps.filter(x => x.id !== p.id))}>🗑</button>
+            </div>
+          ))}
+
+          <div className="sec-title">افزودن مکان جدید</div>
+          <input className="fld" value={pName} placeholder="نام مکان — مثلاً: خانه خاله" onChange={e => setPName(e.target.value)} />
+          <div className="icon-row">
+            {PLACE_ICONS.map(ic => (
+              <button key={ic} className={`icon-btn ${pIcon === ic ? 'on' : ''}`} onClick={() => setPIcon(ic)}>{ic}</button>
+            ))}
+          </div>
+          <div className="ep-input" style={{ marginBottom: 8 }}>
+            <input className="fld" value={pQuery} placeholder="جستجوی آدرس یا ایستگاه..."
+              onChange={e => { setPQuery(e.target.value); setPLoc(null); }}
+              onFocus={() => setPFocus(true)} onBlur={() => setTimeout(() => setPFocus(false), 200)} />
+            {pFocus && !pLoc && (searchStations(pQuery).length > 0 || geoP.length > 0) && (
+              <div className="s-drop" style={{ zIndex: 60 }}>
+                {searchStations(pQuery).slice(0, 4).map(r => (
+                  <div key={r.id} className="s-item" onMouseDown={() => { setPLoc({ ...stCoord(r.id), label: r.fa }); setPQuery(r.fa); }}>
+                    <span className="dot" style={{ background: r.color }} />
+                    <span className="nm">{r.fa}</span>
+                    <span className="ln">{r.lineNames}</span>
+                  </div>
+                ))}
+                {geoP.map((g, i) => (
+                  <div key={i} className="s-item" onMouseDown={() => { setPLoc({ lat: g.lat, lng: g.lng, label: g.label }); setPQuery(g.label); }}>
+                    <span className="em">📍</span>
+                    <span className="nm">{g.label}</span>
+                    <span className="ln">{g.sub}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="ep-btns">
+            <button className="chip" onClick={async () => { const ep = await geoloc(); if (ep) { setPLoc(ep); setPQuery(ep.label); } else alert('دسترسی به موقعیت مکانی ممکن نیست'); }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>
+              موقعیت من
+            </button>
+            <button className={`chip ${picking === 'P' ? 'on' : ''}`} onClick={() => { setPicking(picking === 'P' ? null : 'P'); setSheet(null); }}>انتخاب از نقشه</button>
+          </div>
+          {pLoc && <div className="loc-chip">📍 {pLoc.label}</div>}
+          <button className="btn btn-primary" disabled={!pName.trim() || !pLoc} onClick={savePlace}>ذخیره مکان</button>
         </div>
       </div>
 
@@ -454,17 +747,19 @@ export default function TehranMap() {
         </div>
         <div className="sheet-body chat">
           {chat.length === 0 && (
-            <div className="walk">از دستیار بپرس: «بهترین مسیر از تجریش تا آزادی؟» یا «کدام ایستگاه به برج میلاد نزدیک‌تره؟»</div>
+            <div className="walk">دستیار نقشه را کنترل می‌کند — بگویید: «از دانشگاهم تا برج میلاد چطور برم؟»، «ایستگاه تجریش را نشانم بده» یا «کافه X را با نام پاتوق ذخیره کن».</div>
           )}
           {chat.map((msg, i) => (
-            <div key={i} className={`msg ${msg.role === 'user' ? 'user' : 'ai'}`}>
-              {msg.content || <span className="typing"><i /><i /><i /></span>}
-            </div>
+            msg.role === 'action'
+              ? <div key={i} className="msg action">{msg.content}</div>
+              : <div key={i} className={`msg ${msg.role === 'user' ? 'user' : 'ai'}`}>
+                  {msg.content || <span className="typing"><i /><i /><i /></span>}
+                </div>
           ))}
           <div ref={chatEnd} />
         </div>
         <div className="chat-row">
-          <input value={aiQ} placeholder="سوال خود را بپرسید..." onChange={e => setAiQ(e.target.value)}
+          <input value={aiQ} placeholder="مثلاً: از دانشگاه تا خانه خاله..." onChange={e => setAiQ(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && askAI()} disabled={aiBusy} />
           <button className="chat-send" onClick={askAI} disabled={aiBusy || !aiQ.trim()}>➤</button>
         </div>
