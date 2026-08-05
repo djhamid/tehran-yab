@@ -8,6 +8,7 @@ import linesRaw from '@/data/lines.json';
 import pathsRaw from '@/data/paths.json';
 import { findRoute, haversineKm, makeBidirectional, nearestStations, walkMinutes } from '@/lib/route-finder';
 import { geocode, type GeoResult } from '@/lib/geocode';
+import { searchNearby, type Poi } from '@/lib/poi';
 import { loadPlaces, newPlaceId, PLACE_ICONS, storePlaces, type SavedPlace } from '@/lib/places';
 import type { Graph, LinesMap, RouteResult, StationsMap } from '@/types/tehgo-metro';
 
@@ -24,7 +25,7 @@ const stCoord = (id: string) => ({ lat: Number(stations[id].latitude), lng: Numb
 
 /** An endpoint: a station (id set) or an arbitrary point (geolocation / map pick / geocoded place). */
 type EP = { id?: string; lat: number; lng: number; label: string };
-type ChatMsg = { role: 'user' | 'assistant' | 'action'; content: string };
+type ChatMsg = { role: 'user' | 'assistant' | 'action' | 'pois'; content: string; pois?: Poi[]; near?: EP };
 
 type FullRoute = {
   metro: RouteResult;
@@ -115,6 +116,7 @@ export default function TehranMap() {
   const map = useRef<ml.Map | null>(null);
   const routeMarkers = useRef<ml.Marker[]>([]);
   const placeMarkers = useRef<ml.Marker[]>([]);
+  const poiMarkers = useRef<ml.Marker[]>([]);
   const tempMarker = useRef<ml.Marker | null>(null);
   const pickingRef = useRef<'A' | 'B' | 'P' | null>(null);
 
@@ -347,7 +349,12 @@ export default function TehranMap() {
     const n = normalize(raw);
     if (n.includes('موقعيت من') || /my ?location|current location|here/i.test(raw)) return geoloc();
     const p = placesRef.current.find(x => normalize(x.name) === n)
-      || placesRef.current.find(x => normalize(x.name).includes(n) || n.includes(normalize(x.name)));
+      // «خاله» → saved «خانه خاله» ok; «دانشگاهم» → saved «دانشگاه» ok (leftover ≤2 chars).
+      // but «دانشگاه شریف» must NOT match saved «دانشگاه» — the extra word means a different place.
+      || placesRef.current.find(x => {
+        const pn = normalize(x.name);
+        return pn.includes(n) || (n.includes(pn) && n.replace(pn, '').trim().length <= 2);
+      });
     if (p) return { lat: p.lat, lng: p.lng, label: p.name };
     const st = searchStations(raw)[0];
     if (st) return { id: st.id, ...stCoord(st.id), label: st.fa };
@@ -366,33 +373,74 @@ export default function TehranMap() {
     tempMarker.current = new ml.Marker({ element: el, anchor: 'center' }).setLngLat([ep.lng, ep.lat]).addTo(m);
   };
 
-  /** Execute one <map> command emitted by the model; returns a status chip for the chat. */
-  const runCommand = async (cmd: { action?: string; from?: string; to?: string; place?: string; name?: string }): Promise<string> => {
+  /** Draw numbered POI pins + fit bounds around them and the anchor point. */
+  const showPois = (pois: Poi[], near: EP) => {
+    const m = map.current;
+    if (!m) return;
+    poiMarkers.current.forEach(mk => mk.remove());
+    poiMarkers.current = pois.map((p, i) => {
+      const el = document.createElement('div');
+      el.className = 'poi-marker temp';
+      el.innerHTML = `<span class="poi-n">${faNum(i + 1)}</span>${p.icon}`;
+      el.title = p.name;
+      el.addEventListener('click', ev => { ev.stopPropagation(); focusPoi(p, near); });
+      return new ml.Marker({ element: el, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(m);
+    });
+    const b = new ml.LngLatBounds([near.lng, near.lat], [near.lng, near.lat]);
+    pois.forEach(p => b.extend([p.lng, p.lat]));
+    m.fitBounds(b, { padding: 90, maxZoom: 15, duration: 800 });
+  };
+
+  const focusPoi = (p: Poi, near: EP) => {
+    const m = map.current;
+    if (!m) return;
+    m.flyTo({ center: [p.lng, p.lat], zoom: 16, duration: 600 });
+    const body = `<div class="pop-title">${p.icon} ${esc(p.name)}</div><div class="pop-sub">${esc(p.sub)} — ${faNum(p.distKm.toFixed(1))} کیلومتر از ${esc(near.label)}</div>
+      <div class="pop-actions"><button class="pop-to">مسیر از ${esc(near.label)}</button></div>`;
+    const pop = new ml.Popup({ offset: 18 }).setLngLat([p.lng, p.lat]).setHTML(body).addTo(m);
+    pop.getElement().querySelector('.pop-to')?.addEventListener('click', () => {
+      setEndpoint('A', near, near.label);
+      setEndpoint('B', { lat: p.lat, lng: p.lng, label: p.name }, p.name);
+      pop.remove(); setSheet('route');
+    });
+  };
+
+  /** Execute one <map> command emitted by the model; returns a chat entry (action chip or POI cards). */
+  const runCommand = async (cmd: { action?: string; from?: string; to?: string; place?: string; name?: string; what?: string; near?: string }): Promise<ChatMsg | null> => {
+    const chip = (content: string): ChatMsg => ({ role: 'action', content });
     if (cmd.action === 'route') {
       const [a, b] = await Promise.all([resolvePlace(cmd.from || 'موقعیت من'), resolvePlace(cmd.to || '')]);
-      if (!a) return `«${cmd.from || 'موقعیت من'}» پیدا نشد — مبدأ را دقیق‌تر بگویید.`;
-      if (!b) return `«${cmd.to}» پیدا نشد — مقصد را دقیق‌تر بگویید.`;
+      if (!a) return chip(`«${cmd.from || 'موقعیت من'}» پیدا نشد — مبدأ را دقیق‌تر بگویید.`);
+      if (!b) return chip(`«${cmd.to}» پیدا نشد — مقصد را دقیق‌تر بگویید.`);
       setEndpoint('A', a, a.label);
       setEndpoint('B', b, b.label);
       setTimeout(() => setSheet('route'), 700);
-      return `🗺️ مسیر «${a.label}» ← «${b.label}» روی نقشه نمایش داده شد`;
+      return chip(`🗺️ مسیر «${a.label}» ← «${b.label}» روی نقشه نمایش داده شد`);
     }
     if (cmd.action === 'show') {
       const p = await resolvePlace(cmd.place || cmd.name || '');
-      if (!p) return `«${cmd.place || cmd.name}» پیدا نشد.`;
+      if (!p) return chip(`«${cmd.place || cmd.name}» پیدا نشد.`);
       map.current?.flyTo({ center: [p.lng, p.lat], zoom: 14.5, duration: 800 });
       if (p.id) { if (map.current) openStationPopup(map.current, p.id); } else dropTempMarker(p);
       setTimeout(() => setSheet(null), 700);
-      return `📍 «${p.label}» روی نقشه نمایش داده شد`;
+      return chip(`📍 «${p.label}» روی نقشه نمایش داده شد`);
     }
     if (cmd.action === 'save') {
       const p = await resolvePlace(cmd.place || '');
-      if (!p) return `مکان «${cmd.place}» برای ذخیره پیدا نشد.`;
+      if (!p) return chip(`مکان «${cmd.place}» برای ذخیره پیدا نشد.`);
       const nm = (cmd.name || p.label).trim();
       setPlaces(ps => [...ps, { id: newPlaceId(), name: nm, icon: '📍', lat: p.lat, lng: p.lng }]);
-      return `⭐ «${nm}» به مکان‌های شما اضافه شد`;
+      return chip(`⭐ «${nm}» به مکان‌های شما اضافه شد`);
     }
-    return '';
+    if (cmd.action === 'nearby') {
+      const near = await resolvePlace(cmd.near || 'موقعیت من');
+      if (!near) return chip(`«${cmd.near || 'موقعیت من'}» پیدا نشد — بگویید نزدیک کجا بگردم.`);
+      const pois = await searchNearby(cmd.what || '', near.lat, near.lng).catch(() => [] as Poi[]);
+      if (!pois.length) return chip(`چیزی نزدیک «${near.label}» پیدا نشد.`);
+      showPois(pois, near);
+      return { role: 'pois', content: `نزدیک «${near.label}»:`, pois, near };
+    }
+    return null;
   };
 
   const routeContext = useCallback(() => {
@@ -411,10 +459,16 @@ ${routeContext()}
 کنترل نقشه — وقتی کاربر مسیر می‌خواهد، اول یک جمله کوتاه بگو و بعد در آخرین خط پاسخ دقیقاً یک دستور با این قالب بنویس:
 <map>{"action":"route","from":"مبدأ","to":"مقصد"}</map>
 - اگر کاربر مبدأ نگفت، از "موقعیت من" استفاده کن.
-- نام مکان را همان‌طور که کاربر گفت بنویس: مکان ذخیره‌شده، نام ایستگاه مترو، یا هر مکان معروف تهران (مثل «برج میلاد»)؛ اپ خودش پیدایش می‌کند.
+- اگر منظور کاربر یکی از مکان‌های ذخیره‌شده است، نامش را دقیقاً همان‌طور که در لیست بالا آمده بنویس؛ وگرنه نام ایستگاه مترو یا مکان معروف تهران (مثل «برج میلاد») را بنویس؛ اپ خودش پیدایش می‌کند.
+- «دانشگاه شریف» یعنی دانشگاه شریف، نه مکان ذخیره‌شده «دانشگاه» — فقط وقتی نام ذخیره‌شده را بنویس که واقعاً منظور کاربر همان است.
 نمایش یک مکان روی نقشه: <map>{"action":"show","place":"نام"}</map>
 ذخیره یک مکان جدید: <map>{"action":"save","name":"نام دلخواه","place":"مکان یا آدرس"}</map>
-جز این سه حالت هرگز تگ <map> ننویس و داخل آن فقط JSON معتبر بگذار.`;
+جستجوی اطراف — «نزدیک‌ترین کافه لمیز به خانه خاله» یا «داروخانه این اطراف»:
+<map>{"action":"nearby","what":"چی","near":"کجا"}</map>
+- "what": نوع مکان یا برند. برای برند هر دو نگارش را با | بنویس: "لمیز|Lamiz". برای نوع، کلمه فارسی: "کافه"، "داروخانه"، "رستوران".
+- "near": مکان ذخیره‌شده، ایستگاه، یا "موقعیت من" اگر کاربر جایی نگفت.
+- اپ خودش نتایج را با فاصله به کاربر نشان می‌دهد — تو نتیجه را حدس نزن و لیست نساز.
+جز این چهار حالت هرگز تگ <map> ننویس و داخل آن فقط JSON معتبر بگذار.`;
   }, [places, routeContext]);
 
   const askAI = async () => {
@@ -430,7 +484,7 @@ ${routeContext()}
         body: JSON.stringify({
           messages: [
             { role: 'system', content: sysPrompt() },
-            ...history.filter(m => m.role !== 'action').slice(-8).map(m => ({ role: m.role, content: m.content })),
+            ...history.filter(m => m.role === 'user' || m.role === 'assistant').slice(-8).map(m => ({ role: m.role, content: m.content })),
           ],
         }),
       });
@@ -462,7 +516,7 @@ ${routeContext()}
       if (!shown && !cmds.length) setChat([...history, { role: 'assistant', content: 'پاسخی دریافت نشد.' }]);
       for (const c of cmds) {
         const note = await runCommand(c);
-        if (note) setChat(prev => [...prev, { role: 'action', content: note }]);
+        if (note) setChat(prev => [...prev, note]);
       }
     } catch {
       setChat([...history, { role: 'assistant', content: 'خطا در ارتباط با دستیار. کلید Cerebras را در .env بررسی کنید.' }]);
@@ -747,10 +801,25 @@ ${routeContext()}
         </div>
         <div className="sheet-body chat">
           {chat.length === 0 && (
-            <div className="walk">دستیار نقشه را کنترل می‌کند — بگویید: «از دانشگاهم تا برج میلاد چطور برم؟»، «ایستگاه تجریش را نشانم بده» یا «کافه X را با نام پاتوق ذخیره کن».</div>
+            <div className="walk">دستیار نقشه را کنترل می‌کند — بگویید: «از دانشگاهم تا برج میلاد چطور برم؟»، «نزدیک‌ترین کافه لمیز به خانه خاله» یا «کافه X را با نام پاتوق ذخیره کن».</div>
           )}
           {chat.map((msg, i) => (
-            msg.role === 'action'
+            msg.role === 'pois' && msg.pois && msg.near
+              ? <div key={i} className="poi-block">
+                  <div className="msg action">{msg.content}</div>
+                  {msg.pois.map((p, j) => (
+                    <button key={j} className="poi-card" onClick={() => { focusPoi(p, msg.near!); setSheet(null); }}>
+                      <span className="poi-idx">{faNum(j + 1)}</span>
+                      <span className="poi-ic">{p.icon}</span>
+                      <span className="poi-body">
+                        <span className="poi-nm">{p.name}</span>
+                        {p.sub && <span className="poi-sub">{p.sub}</span>}
+                      </span>
+                      <span className="poi-dist">{p.distKm < 1 ? `${faNum(Math.round(p.distKm * 1000))} متر` : `${faNum(p.distKm.toFixed(1))} کیلومتر`}<i>🚶 {faNum(walkMinutes(p.distKm))} دقیقه</i></span>
+                    </button>
+                  ))}
+                </div>
+              : msg.role === 'action'
               ? <div key={i} className="msg action">{msg.content}</div>
               : <div key={i} className={`msg ${msg.role === 'user' ? 'user' : 'ai'}`}>
                   {msg.content || <span className="typing"><i /><i /><i /></span>}
