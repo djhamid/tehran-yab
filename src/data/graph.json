@@ -769,7 +769,7 @@
   "kahrizak": [
     {
       "from": "kahrizak",
-      "to": "haram_e_motahar_e_emam_khomeini",
+      "to": "holy_shrine_of_imam_khomeini",
       "line": "line_1",
       "weight": 1
     }
@@ -1535,7 +1535,7 @@
     },
     {
       "from": "shahed_baghershahr",
-      "to": "haram_e_motahar_e_emam_khomeini",
+      "to": "holy_shrine_of_imam_khomeini",
       "line": "line_1",
       "weight": 1
     },

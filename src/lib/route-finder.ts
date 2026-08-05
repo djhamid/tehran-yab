@@ -1,68 +1,109 @@
-import { Graph, RouteResult, RouteStep, StationsMap } from '@/types/tehgo-metro';
+import { Graph, RouteLeg, RouteResult, RouteStep, Station, StationsMap } from '@/types/tehgo-metro';
 
-export function findRoutes(
-  graph: Graph,
-  stations: StationsMap,
-  from: string,
-  to: string,
-  maxRoutes: number = 5
-): RouteResult[] {
-  if (from === to) return [];
-  const allRoutes: RouteResult[] = [];
-  
-  const findAllPaths = (
-    current: string, target: string, visited: Set<string>,
-    path: string[], lines: string[], currentLine: string, transfers: number
-  ) => {
-    if (current === target) {
-      const steps: RouteStep[] = [];
-      let prevLine = '';
-      for (let i = 0; i < path.length; i++) {
-        const stationId = path[i];
-        const station = stations[stationId];
-        if (!station) continue;
-        const edge = i > 0 ? graph[path[i - 1]]?.find(e => e.to === stationId) : null;
-        const line = edge?.line || station.lines?.[0] || '';
-        const isTransfer = line !== prevLine && prevLine !== '';
-        if (isTransfer && steps.length > 0) steps[steps.length - 1].transferTo = line;
-        steps.push({ stationId, station, line, isTransfer });
-        prevLine = line;
-      }
-      const uniqueLines = Array.from(new Set(steps.map(s => s.line).filter(Boolean)));
-      allRoutes.push({ steps, totalStations: path.length, totalTransfers: uniqueLines.length - 1, lines: uniqueLines });
-      return;
+// ponytail: tuned constants, not config — tweak here if estimates feel off
+const MIN_PER_HOP = 2;      // avg minutes between adjacent stations
+const MIN_PER_TRANSFER = 5; // walking between platforms + waiting
+
+/** Upstream graph.json misses some reverse edges — metro lines run both ways, so mirror every edge. */
+export function makeBidirectional(graph: Graph): Graph {
+  const g: Graph = {};
+  for (const [from, edges] of Object.entries(graph)) (g[from] ??= []).push(...edges);
+  for (const edges of Object.values(graph))
+    for (const e of edges) {
+      const back = (g[e.to] ??= []);
+      if (!back.some(b => b.to === e.from && b.line === e.line))
+        back.push({ from: e.to, to: e.from, line: e.line, weight: e.weight });
     }
-    if (path.length > 30 || transfers > 4) return;
-    const edges = graph[current] || [];
-    const sortedEdges = [...edges].sort((a, b) => {
-      const aIsSameLine = a.line === currentLine ? 0 : 1;
-      const bIsSameLine = b.line === currentLine ? 0 : 1;
-      return aIsSameLine - bIsSameLine;
-    });
-    for (const edge of sortedEdges) {
-      if (!visited.has(edge.to) && stations[edge.to]) {
-        const newTransfers = currentLine && edge.line !== currentLine ? transfers + 1 : transfers;
-        const newVisited = new Set(visited);
-        newVisited.add(edge.to);
-        const newLines = edge.line !== currentLine ? [...lines, edge.line] : lines;
-        findAllPaths(edge.to, target, newVisited, [...path, edge.to], newLines, edge.line, newTransfers);
-      }
-    }
+  return g;
+}
+
+/** Dijkstra over (station,line) states so line changes cost a transfer penalty. */
+export function findRoute(graph: Graph, stations: StationsMap, from: string, to: string): RouteResult | null {
+  if (from === to || !stations[from] || !stations[to]) return null;
+
+  // state key: `${station}|${line}` — cost in minutes
+  const dist = new Map<string, number>();
+  const prev = new Map<string, string>(); // state -> previous state
+  // simple sorted-array PQ; ponytail: n≈300 states, heap not worth it
+  const queue: [number, string][] = [];
+  const push = (cost: number, key: string) => {
+    let i = queue.findIndex(q => q[0] > cost);
+    if (i < 0) i = queue.length;
+    queue.splice(i, 0, [cost, key]);
   };
 
-  const firstStation = stations[from];
-  const initialLine = firstStation?.lines?.[0] || '';
-  findAllPaths(from, to, new Set([from]), [from], [initialLine], initialLine, 0);
+  const start = `${from}|`;
+  dist.set(start, 0);
+  push(0, start);
 
-  const uniqueRoutes = allRoutes.filter((route, index, self) => {
-    const pathKey = route.steps.map(s => s.stationId).join('-');
-    return index === self.findIndex(r => r.steps.map(s => s.stationId).join('-') === pathKey);
-  });
+  let bestEnd: string | null = null;
+  while (queue.length) {
+    const [cost, key] = queue.shift()!;
+    if (cost > (dist.get(key) ?? Infinity)) continue;
+    const [station, line] = key.split('|');
+    if (station === to) { bestEnd = key; break; }
+    for (const edge of graph[station] || []) {
+      if (!stations[edge.to]) continue;
+      const transfer = line !== '' && edge.line !== line;
+      if (transfer && stations[station]?.disabled) continue; // can't change lines at a closed station
+      const nCost = cost + MIN_PER_HOP * edge.weight + (transfer ? MIN_PER_TRANSFER : 0);
+      const nKey = `${edge.to}|${edge.line}`;
+      if (nCost < (dist.get(nKey) ?? Infinity)) {
+        dist.set(nKey, nCost);
+        prev.set(nKey, key);
+        push(nCost, nKey);
+      }
+    }
+  }
+  if (!bestEnd) return null;
 
-  uniqueRoutes.sort((a, b) => {
-    if (a.totalTransfers !== b.totalTransfers) return a.totalTransfers - b.totalTransfers;
-    return a.totalStations - b.totalStations;
-  });
+  // walk back
+  const chain: { stationId: string; line: string }[] = [];
+  for (let k: string | undefined = bestEnd; k; k = prev.get(k)) {
+    const [stationId, line] = k.split('|');
+    chain.unshift({ stationId, line });
+  }
+  // first state has no line — inherit the first ride's line
+  if (chain.length > 1 && !chain[0].line) chain[0].line = chain[1].line;
 
-  return uniqueRoutes.slice(0, maxRoutes);
+  const steps: RouteStep[] = [];
+  const legs: RouteLeg[] = [];
+  let prevLine = '';
+  for (const { stationId, line } of chain) {
+    const isTransfer = prevLine !== '' && line !== prevLine;
+    if (isTransfer && steps.length) steps[steps.length - 1].transferTo = line;
+    steps.push({ stationId, line, isTransfer });
+    if (!legs.length || line !== prevLine) {
+      // transfer station belongs to both legs so each leg renders complete
+      legs.push({ line, stationIds: legs.length ? [steps[steps.length - 2].stationId] : [] });
+    }
+    legs[legs.length - 1].stationIds.push(stationId);
+    prevLine = line;
+  }
+  const lines = legs.map(l => l.line);
+  const transfers = lines.length - 1;
+  return {
+    steps, legs, lines,
+    totalStations: chain.length,
+    totalTransfers: transfers,
+    minutes: Math.round((chain.length - 1) * MIN_PER_HOP + transfers * MIN_PER_TRANSFER),
+  };
 }
+
+const R = 6371; // km
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const d = Math.PI / 180;
+  const a = Math.sin(((lat2 - lat1) * d) / 2) ** 2 +
+    Math.cos(lat1 * d) * Math.cos(lat2 * d) * Math.sin(((lng2 - lng1) * d) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+export function nearestStations(stations: StationsMap, lat: number, lng: number, n = 3): { station: Station; id: string; km: number }[] {
+  return Object.entries(stations)
+    .filter(([, s]) => !s.disabled)
+    .map(([id, s]) => ({ id, station: s, km: haversineKm(lat, lng, Number(s.latitude), Number(s.longitude)) }))
+    .sort((a, b) => a.km - b.km)
+    .slice(0, n);
+}
+
+export const walkMinutes = (km: number) => Math.round((km / 4.5) * 60); // 4.5 km/h walking

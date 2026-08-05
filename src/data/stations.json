@@ -290,6 +290,45 @@
     ],
     "id": "atmosphere"
   },
+  "ayatollah_kashani": {
+    "name": "Ayatollah Kashani",
+    "translations": {
+      "fa": "آیت‌الله کاشانی"
+    },
+    "lines": [
+      "line_6",
+      "line_4"
+    ],
+    "longitude": "51.301673",
+    "latitude": "35.741428",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": null,
+    "relations": [
+      "Shahid Sattari",
+      "Shahr-e Ziba",
+      "Allameh Jafari",
+      "Chaharbagh"
+    ],
+    "id": "ayatollah_kashani"
+  },
   "ayatollah_taleghani": {
     "name": "Ayatollah Taleghani",
     "translations": {
@@ -787,6 +826,48 @@
     ],
     "id": "chehel_tan_e_doulab"
   },
+  "cheshmeh_ali": {
+    "name": "Cheshmeh Ali",
+    "translations": {
+      "fa": "چشمه علی"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.4550",
+    "latitude": "35.6099",
+    "address": "شهر ری، منطقه چشمه علی",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Ebn-e Babviyeh",
+      "Shohada-ye Dowlat Abad"
+    ],
+    "id": "cheshmeh_ali"
+  },
   "chitgar": {
     "name": "Chitgar",
     "translations": {
@@ -1177,6 +1258,48 @@
     ],
     "id": "doctor_shariati"
   },
+  "ebn_e_babviyeh": {
+    "name": "Ebn-e Babviyeh",
+    "translations": {
+      "fa": "ابن بابویه"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.4463",
+    "latitude": "35.6037",
+    "address": "شهر ری، خیابان ابن بابویه",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Meydan-e Hazrat-e Abdol Azim",
+      "Cheshmeh Ali"
+    ],
+    "id": "ebn_e_babviyeh"
+  },
   "ebn_e_sina": {
     "name": "Ebn-e Sina",
     "translations": {
@@ -1557,6 +1680,47 @@
       "Shahid Sepahbod Qasem Soleimani"
     ],
     "id": "golshahr"
+  },
+  "haram_e_hazrat_e_abdol_azim": {
+    "name": "Haram-e Hazrat-e Abdol Azim",
+    "translations": {
+      "fa": "حرم حضرت عبدالعظیم"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.4391",
+    "latitude": "35.5916",
+    "address": "شهر ری، جنب حرم حضرت عبدالعظیم (ع)",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": true,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Meydan-e Hazrat-e Abdol Azim"
+    ],
+    "id": "haram_e_hazrat_e_abdol_azim"
   },
   "hasan_abad": {
     "name": "Hasan Abad",
@@ -2279,6 +2443,47 @@
     ],
     "id": "komeyl"
   },
+  "kouhsar": {
+    "name": "Kouhsar",
+    "translations": {
+      "fa": "کوهسار"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.2450",
+    "latitude": "35.7800",
+    "address": "انتهای بزرگراه آبشناسان، شهران شمالی، بلوار کوهسار",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": true,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Shohada-ye Kan"
+    ],
+    "id": "kouhsar"
+  },
   "mahdiyeh": {
     "name": "Mahdiyeh",
     "translations": {
@@ -2324,6 +2529,48 @@
       "Rahahan"
     ],
     "id": "mahdiyeh"
+  },
+  "maryam_e_moghaddas": {
+    "name": "Maryam-e Moghaddas",
+    "translations": {
+      "fa": "مریم مقدس (س)"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.4164",
+    "latitude": "35.7133",
+    "address": "خیابان کریمخان زند، خیابان شهید نجات اللهی (ویلا)",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Shohada-ye Haftom-e Tir",
+      "Meydan-e Hazrat Vali Asr"
+    ],
+    "id": "maryam_e_moghaddas"
   },
   "marzdaran": {
     "name": "Marzdaran",
@@ -2618,6 +2865,48 @@
     ],
     "id": "meydan_e_giyam"
   },
+  "meydan_e_hazrat_e_abdol_azim": {
+    "name": "Meydan-e Hazrat-e Abdol Azim",
+    "translations": {
+      "fa": "میدان حضرت عبدالعظیم"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.4406",
+    "latitude": "35.5935",
+    "address": "شهر ری، میدان حضرت عبدالعظیم (ع)",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Haram-e Hazrat-e Abdol Azim",
+      "Ebn-e Babviyeh"
+    ],
+    "id": "meydan_e_hazrat_e_abdol_azim"
+  },
   "meydan_e_hazrat_vali_asr": {
     "name": "Meydan-e Hazrat Vali Asr",
     "translations": {
@@ -2830,6 +3119,48 @@
       "Shahid Dadman"
     ],
     "id": "meydan_e_ketab"
+  },
+  "meydan_e_khorasan": {
+    "name": "Meydan-e Khorasan",
+    "translations": {
+      "fa": "میدان خراسان"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.4478",
+    "latitude": "35.6728",
+    "address": "میدان خراسان",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Shahid Rezaei",
+      "Shohada-ye Hefdah-e Shahrivar"
+    ],
+    "id": "meydan_e_khorasan"
   },
   "meydan_e_mohammadiyeh": {
     "name": "Meydan-e Mohammadiyeh",
@@ -3972,6 +4303,48 @@
     ],
     "id": "sabalan"
   },
+  "sarbaz": {
+    "name": "Sarbaz",
+    "translations": {
+      "fa": "سرباز"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.4402",
+    "latitude": "35.7077",
+    "address": "خیابان سپاه، میدان سپاه",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Imam Hossein",
+      "Bahar Shiraz (Khanevadeh Hospital)"
+    ],
+    "id": "sarbaz"
+  },
   "sarsabz": {
     "name": "Sarsabz",
     "translations": {
@@ -4824,6 +5197,47 @@
     ],
     "id": "shahid_sayyad_shirazi"
   },
+  "shahid_sepahbod_qasem_soleimani": {
+    "name": "Shahid Sepahbod Qasem Soleimani",
+    "translations": {
+      "fa": "شهید سپهبد قاسم سلیمانی"
+    },
+    "lines": [
+      "line_5"
+    ],
+    "longitude": "50.8881",
+    "latitude": "35.8261",
+    "address": "کرج، مهرشهر، انتهای بلوار ارم",
+    "colors": [
+      "#007E46"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Golshahr"
+    ],
+    "id": "shahid_sepahbod_qasem_soleimani"
+  },
   "shahid_zeynoddin": {
     "name": "Shahid Zeynoddin",
     "translations": {
@@ -4866,6 +5280,47 @@
     ],
     "id": "shahid_zeynoddin"
   },
+  "shahr_e_parand": {
+    "name": "Shahr-e Parand",
+    "translations": {
+      "fa": "شهر پرند"
+    },
+    "lines": [
+      "line_1"
+    ],
+    "longitude": "50.923976",
+    "latitude": "35.489058",
+    "address": "شهر جدید پرند",
+    "colors": [
+      "#E0001F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": true,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Emam Khomeini Airport"
+    ],
+    "id": "shahr_e_parand"
+  },
   "shahr_e_rey": {
     "name": "Shahr-e Rey",
     "translations": {
@@ -4907,6 +5362,48 @@
       "Palayeshgah"
     ],
     "id": "shahr_e_rey"
+  },
+  "shahr_e_ziba": {
+    "name": "Shahr-e Ziba",
+    "translations": {
+      "fa": "شهر زیبا"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.2843",
+    "latitude": "35.7437",
+    "address": "شهران، بلوار شهرزیبا",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": true,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Ayatollah Kashani",
+      "Shahran"
+    ],
+    "id": "shahr_e_ziba"
   },
   "shahrak_e_azmayesh": {
     "name": "Shahrak-e Azmayesh",
@@ -5034,6 +5531,48 @@
     ],
     "id": "shahrak_e_shariaty"
   },
+  "shahran": {
+    "name": "Shahran",
+    "translations": {
+      "fa": "شهران"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.2701",
+    "latitude": "35.7585",
+    "address": "شهران، میدان الغدیر",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": true,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Shahr-e Ziba",
+      "Shohada-ye Kan"
+    ],
+    "id": "shahran"
+  },
   "shohada_ye_dowlat_abad": {
     "name": "Shohada-ye Dowlat Abad",
     "translations": {
@@ -5121,6 +5660,94 @@
       "Ayatollah Taleghani"
     ],
     "id": "shohada_ye_haftom_e_tir"
+  },
+  "shohada_ye_hefdah_e_shahrivar": {
+    "name": "Shohada-ye Hefdah-e Shahrivar",
+    "translations": {
+      "fa": "شهدای هفده شهریور"
+    },
+    "lines": [
+      "line_6",
+      "line_7"
+    ],
+    "longitude": "51.4491",
+    "latitude": "35.6809",
+    "address": "خیابان ۱۷ شهریور، تقاطع خیابان امیرکبیر",
+    "colors": [
+      "#EF639F",
+      "#7F0B74"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Meydan-e Khorasan",
+      "Amirkabir",
+      "Chehel Tan-e Doulab",
+      "Meydan-e Giyam"
+    ],
+    "id": "shohada_ye_hefdah_e_shahrivar"
+  },
+  "shohada_ye_kan": {
+    "name": "Shohada-ye Kan",
+    "translations": {
+      "fa": "شهدای کن"
+    },
+    "lines": [
+      "line_6"
+    ],
+    "longitude": "51.2588",
+    "latitude": "35.7693",
+    "address": "بزرگراه همت، ورودی کن",
+    "colors": [
+      "#EF639F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Shahran",
+      "Kouhsar"
+    ],
+    "id": "shohada_ye_kan"
   },
   "shoush": {
     "name": "Shoush",
@@ -5550,6 +6177,89 @@
       "Chitgar"
     ],
     "id": "varzeshgah_e_azadi"
+  },
+  "varzeshgah_e_takhti": {
+    "name": "Varzeshgah-e Takhti",
+    "translations": {
+      "fa": "ورزشگاه تختی"
+    },
+    "lines": [
+      "line_7"
+    ],
+    "longitude": "51.5088",
+    "latitude": "35.6706",
+    "address": "بزرگراه بسیج، جنب ورزشگاه تختی",
+    "colors": [
+      "#7F0B74"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Basij"
+    ],
+    "id": "varzeshgah_e_takhti"
+  },
+  "vavan": {
+    "name": "Vavan",
+    "translations": {
+      "fa": "واوان"
+    },
+    "lines": [
+      "line_1"
+    ],
+    "longitude": "51.30011",
+    "latitude": "35.514507",
+    "address": "اتوبان تهران - قم، بعد از فرودگاه امام خمینی (ره)، شهرک واوان",
+    "colors": [
+      "#E0001F"
+    ],
+    "disabled": true,
+    "wc": false,
+    "coffeeShop": false,
+    "groceryStore": false,
+    "fastFood": false,
+    "atm": false,
+    "elevator": false,
+    "bicycleParking": false,
+    "waterCooler": null,
+    "cleanFood": false,
+    "blindPath": true,
+    "fireSuppressionSystem": true,
+    "fireExtinguisher": true,
+    "metroPolice": true,
+    "creditTicketSales": true,
+    "waitingChair": true,
+    "camera": true,
+    "trashCan": true,
+    "smoking": false,
+    "petsAllowed": false,
+    "freeWifi": false,
+    "prayerRoom": false,
+    "relations": [
+      "Namayeshgah-e Shahr-e Aftab",
+      "Emam Khomeini Airport"
+    ],
+    "id": "vavan"
   },
   "yadegar_e_imam": {
     "name": "Yadegar-e Imam",
